@@ -1,0 +1,136 @@
+#!/bin/bash
+
+# --- Bootstrapper ---
+
+# Ensure directories exist (if running from repo)
+# In production install, these would be in /usr/local/paqx
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Override globals if running locally
+if [ -d "$ROOT_DIR/lib" ]; then
+    PAQX_ROOT="$ROOT_DIR"
+    LIB_DIR="$PAQX_ROOT/lib"
+    MODULES_DIR="$PAQX_ROOT/modules"
+else
+    # Default install locations
+    PAQX_ROOT="/usr/local/paqx"
+    LIB_DIR="$PAQX_ROOT/lib"
+    MODULES_DIR="$PAQX_ROOT/modules"
+fi
+
+if [ ! -f "$LIB_DIR/core.sh" ]; then
+    echo "Error: Library files not found at $LIB_DIR"
+    exit 1
+fi
+
+source "$LIB_DIR/core.sh"
+source "$LIB_DIR/utils.sh"
+
+# --- Dependency Check ---
+detect_os_type=$(detect_os)
+
+install_base_deps() {
+    if [ "$detect_os_type" = "openwrt" ]; then
+        if ! command -v curl >/dev/null; then opkg update && opkg install curl; fi
+    else
+        # Linux
+        local PM
+        if command -v apt-get >/dev/null; then PM="apt-get"
+        elif command -v yum >/dev/null; then PM="yum"
+        elif command -v dnf >/dev/null; then PM="dnf"
+        fi
+        
+        if [ -n "$PM" ]; then
+            if ! command -v curl >/dev/null || ! command -v tar >/dev/null; then
+                $PM update -y >/dev/null 2>&1
+                $PM install -y curl tar >/dev/null 2>&1
+            fi
+        fi
+    fi
+}
+
+download_binary() {
+    local arch
+    arch=$(detect_arch)
+    local os_type="linux"
+    
+    local download_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$VERSION/paqet-${os_type}-${arch}-${VERSION}.tar.gz"
+    
+    log_info "Downloading Binary ($VERSION) for $arch..."
+    curl -L --retry 3 "$download_url" -o "/tmp/paqet.tar.gz"
+    
+    if [ $? -ne 0 ]; then
+        log_error "Download failed."
+        return 1
+    fi
+    
+    tar -xzf "/tmp/paqet.tar.gz" -C "/tmp"
+    local bin=$(find /tmp -type f -name "paqet*" | head -n 1)
+    if [ -f "$bin" ]; then
+        mkdir -p "$(dirname "$BINARY_PATH")"
+        mv "$bin" "$BINARY_PATH"
+        chmod +x "$BINARY_PATH"
+        rm -f "/tmp/paqet.tar.gz"
+        log_success "Binary installed."
+    fi
+}
+
+# --- Menu ---
+
+show_menu() {
+    clear
+    echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║            PAQX MANAGER - Universal Installer                 ║${NC}"
+    echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
+    
+    echo "1) Install - Server Mode (Linux)"
+    echo "2) Install - Client Mode (Linux)"
+    echo "3) Install - Client Mode (OpenWrt)"
+    echo "4) Start Service"
+    echo "5) Stop Service"
+    echo "6) Client Settings (Update Server/Protocol)"
+    echo "7) Logs"
+    echo "0) Exit"
+    echo ""
+    read -p "Select option: " opt
+    
+    case $opt in
+        1) 
+            source "$MODULES_DIR/server.sh"
+            check_root; install_base_deps; download_binary; install_server ;;
+        2) 
+            source "$MODULES_DIR/client.sh"
+            check_root; install_base_deps; download_binary; install_client_linux ;;
+        3) 
+            source "$MODULES_DIR/client_openwrt.sh"
+            check_root; install_base_deps; download_binary; install_client_openwrt ;;
+        4) 
+            if [ "$detect_os_type" = "openwrt" ]; then /etc/init.d/paqx start; else systemctl start paqx; fi
+            log_success "Started." ;;
+        5) 
+            if [ "$detect_os_type" = "openwrt" ]; then /etc/init.d/paqx stop; else systemctl stop paqx; fi
+            log_success "Stopped." ;;
+        6)
+            check_root
+            if [ "$detect_os_type" = "openwrt" ]; then
+                source "$MODULES_DIR/client_openwrt.sh"
+                configure_client_openwrt
+            else
+                source "$MODULES_DIR/client.sh"
+                configure_client_linux
+            fi ;;
+        7)
+            if command -v journalctl >/dev/null; then journalctl -u paqx -n 50 --no-pager; else logread | grep paqx | tail -n 50; fi ;;
+        0) exit 0 ;;
+        *) echo "Invalid option" ;;
+    esac
+    read -n 1 -s -r -p "Press any key to continue..."
+}
+
+# --- Main ---
+if [ "$1" = "install" ]; then
+    show_menu
+else
+    while true; do show_menu; done
+fi
