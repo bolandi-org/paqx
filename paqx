@@ -85,18 +85,43 @@ install_base_deps() {
     fi
 }
 
+get_latest_release() {
+    local max_retries=3
+    local retry_delay=2
+    local release_json=""
+    
+    # Try fetching from GitHub API
+    for i in $(seq 1 $max_retries); do
+        release_json=$(curl -sL --fail "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest")
+        if [ -n "$release_json" ]; then break; fi
+        sleep $retry_delay
+    done
+    
+    local tag_name
+    tag_name=$(echo "$release_json" | grep -oP '"tag_name": "\K(.*)(?=")')
+    
+    # Fallback to hardcoded known pattern if jq/grep fails
+    if [ -z "$tag_name" ]; then tag_name="v1.0.0-alpha.16"; fi
+    echo "$tag_name"
+}
+
 download_binary() {
     local arch
     arch=$(detect_arch)
     local os_type="linux"
-    if [ "$arch" = "unknown" ]; then
-        log_error "Unsupported architecture."
-        return 1
-    fi
+    [ "$arch" = "unknown" ] && { log_error "Unsupported architecture."; return 1; }
     
-    local download_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$VERSION/paqet-${os_type}-${arch}-${VERSION}.tar.gz"
+    local version_tag=$(get_latest_release)
+    # Strip 'v' prefix if needed for filename construction, depending on repo convention
+    # Based on user input: tag is v1.0.0-alpha.16
     
-    log_info "Downloading Binary ($VERSION) for $arch..."
+    # Construct URL based on observed release asset pattern
+    # Assuming pattern: paqet-linux-amd64-<version>.tar.gz
+    # Note: Version in filename usually lacks 'v' prefix
+    local clean_ver="${version_tag#v}"
+    local download_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$version_tag/paqet-${os_type}-${arch}-${clean_ver}.tar.gz"
+    
+    log_info "Downloading Paqet ($version_tag) for $arch..."
     curl -L --retry 3 --fail "$download_url" -o "/tmp/paqet.tar.gz"
     
     if [ $? -ne 0 ]; then
