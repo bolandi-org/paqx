@@ -89,25 +89,40 @@ download_binary() {
     local arch
     arch=$(detect_arch)
     local os_type="linux"
+    if [ "$arch" = "unknown" ]; then
+        log_error "Unsupported architecture."
+        return 1
+    fi
     
     local download_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$VERSION/paqet-${os_type}-${arch}-${VERSION}.tar.gz"
     
     log_info "Downloading Binary ($VERSION) for $arch..."
-    curl -L --retry 3 "$download_url" -o "/tmp/paqet.tar.gz"
+    curl -L --retry 3 --fail "$download_url" -o "/tmp/paqet.tar.gz"
     
     if [ $? -ne 0 ]; then
-        log_error "Download failed."
+        log_error "Download failed. URL: $download_url"
         return 1
     fi
     
     tar -xzf "/tmp/paqet.tar.gz" -C "/tmp"
     local bin=$(find /tmp -type f -name "paqet*" | head -n 1)
+    
     if [ -f "$bin" ]; then
-        mkdir -p "$(dirname "$BINARY_PATH")"
-        mv "$bin" "$BINARY_PATH"
-        chmod +x "$BINARY_PATH"
-        rm -f "/tmp/paqet.tar.gz"
-        log_success "Binary installed."
+        # Check if binary is executable format (not HTML error page)
+        if file "$bin" | grep -qE 'ELF|executable'; then
+            mkdir -p "$(dirname "$BINARY_PATH")"
+            mv "$bin" "$BINARY_PATH"
+            chmod +x "$BINARY_PATH"
+            rm -f "/tmp/paqet.tar.gz"
+            log_success "Binary installed ($arch)."
+        else
+            log_error "Downloaded file is not a valid binary. (Exec format error prevention)"
+            rm -f "/tmp/paqet.tar.gz" "$bin"
+            return 1
+        fi
+    else
+        log_error "Binary not found in archive."
+        return 1
     fi
 }
 
