@@ -174,10 +174,7 @@ download_binary() {
         log_error "Binary not found in extracted archive."
         return 1
     fi
-    else
-        log_error "Binary not found in archive."
-        return 1
-    fi
+}
 }
 
 # --- Menu ---
