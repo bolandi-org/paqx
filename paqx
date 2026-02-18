@@ -111,17 +111,42 @@ download_binary() {
     local os_type="linux"
     [ "$arch" = "unknown" ] && { log_error "Unsupported architecture."; return 1; }
     
-    local version_tag=$(get_latest_release)
-    # Strip 'v' prefix if needed for filename construction, depending on repo convention
-    # Based on user input: tag is v1.0.0-alpha.16
+    local max_retries=3
+    local retry_delay=2
+    local release_json=""
     
-    # Construct URL based on observed release asset pattern
-    # Assuming pattern: paqet-linux-amd64-<version>.tar.gz
-    # Note: Version in filename usually lacks 'v' prefix
-    local clean_ver="${version_tag#v}"
-    local download_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$version_tag/paqet-${os_type}-${arch}-${clean_ver}.tar.gz"
+    # Try fetching from GitHub API
+    for i in $(seq 1 $max_retries); do
+        release_json=$(curl -sL --fail "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest")
+        if [ -n "$release_json" ]; then break; fi
+        sleep $retry_delay
+    done
     
-    log_info "Downloading Paqet ($version_tag) for $arch..."
+    local version_tag
+    version_tag=$(echo "$release_json" | grep -oP '"tag_name": "\K(.*)(?=")')
+    
+    log_info "Latest Release: $version_tag"
+    
+    # Find matching asset URL
+    # Look for 'browser_download_url' where name contains os_type and arch
+    local download_url
+    if command -v grep >/dev/null; then
+        # Use grep with PCRE if available for better parsing, otherwise fallback patterns might get tricky without jq
+        # Trying a robust grep pattern to find the url line associated with the asset
+        # We need the url that ends in .tar.gz and contains paqet-linux-arch
+        download_url=$(echo "$release_json" | grep -oP '"browser_download_url": "\K[^"]*paqet-'"$os_type"'-'"$arch"'[^"]*\.tar\.gz')
+    fi
+    
+    # Fallback to manual construction if dynamic lookup failed
+    if [ -z "$download_url" ]; then
+        local clean_ver="${version_tag#v}"
+        download_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$version_tag/paqet-${os_type}-${arch}-${clean_ver}.tar.gz"
+        log_warn "Asset lookup failed. Trying constructed URL: $download_url"
+    else
+        log_info "Found Asset URL: $download_url"
+    fi
+    
+    log_info "Downloading..."
     curl -L --retry 3 --fail "$download_url" -o "/tmp/paqet.tar.gz"
     
     if [ $? -ne 0 ]; then
