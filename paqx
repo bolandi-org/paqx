@@ -127,15 +127,9 @@ download_binary() {
     
     log_info "Latest Release: $version_tag"
     
-    # Find matching asset URL
-    # Look for 'browser_download_url' where name contains os_type and arch
+    # Find matching asset URL safely (Portable)
     local download_url
-    if command -v grep >/dev/null; then
-        # Use grep with PCRE if available for better parsing, otherwise fallback patterns might get tricky without jq
-        # Trying a robust grep pattern to find the url line associated with the asset
-        # We need the url that ends in .tar.gz and contains paqet-linux-arch
-        download_url=$(echo "$release_json" | grep -oP '"browser_download_url": "\K[^"]*paqet-'"$os_type"'-'"$arch"'[^"]*\.tar\.gz')
-    fi
+    download_url=$(echo "$release_json" | grep "browser_download_url" | grep "$os_type" | grep "$arch" | cut -d '"' -f 4 | head -n 1)
     
     # Fallback to manual construction if dynamic lookup failed
     if [ -z "$download_url" ]; then
@@ -147,7 +141,7 @@ download_binary() {
     fi
     
     log_info "Downloading..."
-    curl -L --retry 3 --fail "$download_url" -o "/tmp/paqet.tar.gz"
+    curl -L --retry 3 --fail -H "User-Agent: paqx-manager" "$download_url" -o "/tmp/paqet.tar.gz"
     
     if [ $? -ne 0 ]; then
         log_error "Download failed. URL: $download_url"
