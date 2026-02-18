@@ -103,3 +103,21 @@ configure_client_linux() {
     systemctl restart paqx
     log_success "Configuration applied."
 }
+
+remove_client_linux() {
+    echo -e "${RED}${BOLD}WARNING: This will remove PaqX Client, config, and binaries.${NC}"
+    read -p "Are you sure? (y/N): " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then return; fi
+    
+    log_info "Stopping service..."
+    systemctl stop paqx
+    systemctl disable paqx
+    rm "$SERVICE_FILE_LINUX"
+    systemctl daemon-reload
+    
+    log_info "Removing files..."
+    rm -f "$BINARY_PATH"
+    rm -rf "$CONF_DIR"
+    
+    log_success "PaqX Client uninstalled."
+}

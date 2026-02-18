@@ -172,59 +172,180 @@ download_binary() {
 
 # --- Menu ---
 
-show_menu() {
+# --- Menus ---
+
+main_menu() {
     clear
     echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║            PAQX MANAGER - Universal Installer                 ║${NC}"
     echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
     
-    echo "1) Install - Server Mode (Linux)"
-    echo "2) Install - Client Mode (Linux)"
-    echo "3) Install - Client Mode (OpenWrt)"
-    echo "4) Start Service"
-    echo "5) Stop Service"
-    echo "6) Client Settings (Update Server/Protocol)"
-    echo "7) Logs"
-    echo "0) Exit"
+    echo -e " ${GREEN}1)${NC} Server Manager (Linux)"
+    echo -e " ${CYAN}2)${NC} Client Manager (Linux)"
+    echo -e " ${MAGENTA}3)${NC} Client Manager (OpenWrt)"
+    echo -e " ${RED}4)${NC} Uninstall PaqX"
+    echo -e " ${YELLOW}0)${NC} Exit"
     echo ""
     read -p "Select option: " opt
     
     case $opt in
-        1) 
-            source "$MODULES_DIR/server.sh"
-            check_root; install_base_deps; download_binary; install_server ;;
-        2) 
-            source "$MODULES_DIR/client.sh"
-            check_root; install_base_deps; download_binary; install_client_linux ;;
-        3) 
-            source "$MODULES_DIR/client_openwrt.sh"
-            check_root; install_base_deps; download_binary; install_client_openwrt ;;
-        4) 
-            if [ "$detect_os_type" = "openwrt" ]; then /etc/init.d/paqx start; else systemctl start paqx; fi
-            log_success "Started." ;;
-        5) 
-            if [ "$detect_os_type" = "openwrt" ]; then /etc/init.d/paqx stop; else systemctl stop paqx; fi
-            log_success "Stopped." ;;
-        6)
-            check_root
-            if [ "$detect_os_type" = "openwrt" ]; then
-                source "$MODULES_DIR/client_openwrt.sh"
-                configure_client_openwrt
-            else
-                source "$MODULES_DIR/client.sh"
-                configure_client_linux
-            fi ;;
-        7)
-            if command -v journalctl >/dev/null; then journalctl -u paqx -n 50 --no-pager; else logread | grep paqx | tail -n 50; fi ;;
+        1) server_menu ;;
+        2) client_menu_linux ;;
+        3) client_menu_openwrt ;;
+        4) uninstall_menu ;;
         0) exit 0 ;;
         *) echo "Invalid option" ;;
     esac
-    read -n 1 -s -r -p "Press any key to continue..."
+}
+
+service_control_menu() {
+    local OS_TYPE="$1"
+    
+    status=$(service_is_active)
+    enabled=$(service_is_enabled)
+    
+    echo -e "\n${BOLD}--- Service Control ---${NC}"
+    echo -e "Status: $([ "$status" == "active" ] && echo "${GREEN}Running${NC}" || echo "${RED}Stopped${NC}")"
+    echo -e "Boot:   $([ "$enabled" == "enabled" ] && echo "${GREEN}Enabled${NC}" || echo "${RED}Disabled${NC}")"
+    echo "--------------------------"
+    
+    if [ "$status" == "active" ] || [ "$status" == "enabled" ]; then
+        echo -e " ${YELLOW}1)${NC} Stop Service"
+        echo -e " ${CYAN}2)${NC} Restart Service"
+    else
+        echo -e " ${GREEN}1)${NC} Start Service"
+    fi
+    
+    if [ "$enabled" == "enabled" ]; then
+        echo -e " ${RED}3)${NC} Disable Autostart"
+    else
+        echo -e " ${GREEN}3)${NC} Enable Autostart"
+    fi
+    
+    echo -e " ${WHITE}4)${NC} View Status & Logs"
+    echo -e " ${YELLOW}0)${NC} Back"
+    
+    read -p "Select: " s_opt
+    case $s_opt in
+        1)
+            if [ "$status" == "active" ] || [ "$status" == "enabled" ]; then
+               if [ "$OS_TYPE" = "openwrt" ]; then /etc/init.d/paqx stop; else systemctl stop paqx; fi
+               log_success "Stopped."
+            else
+               if [ "$OS_TYPE" = "openwrt" ]; then /etc/init.d/paqx start; else systemctl start paqx; fi
+               log_success "Started."
+            fi
+            ;;
+        2)
+            if [ "$status" == "active" ] || [ "$status" == "enabled" ]; then
+                if [ "$OS_TYPE" = "openwrt" ]; then /etc/init.d/paqx restart; else systemctl restart paqx; fi
+                log_success "Restarted."
+            fi 
+            ;;
+        3)
+            if [ "$enabled" == "enabled" ]; then
+                if [ "$OS_TYPE" = "openwrt" ]; then /etc/init.d/paqx disable; else systemctl disable paqx; fi
+                log_success "Disabled autostart."
+            else
+                if [ "$OS_TYPE" = "openwrt" ]; then /etc/init.d/paqx enable; else systemctl enable paqx; fi
+                log_success "Enabled autostart."
+            fi
+            ;;
+        4)
+            if command -v journalctl >/dev/null; then 
+                 systemctl status paqx --no-pager
+                 echo "--- Recent Logs ---"
+                 journalctl -u paqx -n 20 --no-pager
+            else 
+                 /etc/init.d/paqx status
+                 echo "--- Recent Logs ---"
+                 logread | grep paqx | tail -n 20
+            fi
+            read -n 1 -s -r -p "Press any key..."
+            ;;
+    esac
+}
+
+server_menu() {
+    source "$MODULES_DIR/server.sh"
+    while true; do
+        clear
+        echo -e "${BLUE}--- Server Manager ---${NC}"
+        echo -e " ${GREEN}1)${NC} Install Server"
+        echo -e " ${YELLOW}2)${NC} Service Control & Logs"
+        echo -e " ${CYAN}3)${NC} Configuration (Port/Key)"
+        echo -e " ${YELLOW}0)${NC} Back"
+        
+        read -p "Select: " opt
+        case $opt in
+            1) check_root; install_base_deps; download_binary; install_server; read -n 1 -s -r -p "Press any key..." ;;
+            2) service_control_menu "linux"; read -n 1 -s -r -p "Press any key..." ;;
+            3) check_root; configure_server; read -n 1 -s -r -p "Press any key..." ;;
+            0) return ;;
+        esac
+    done
+}
+
+client_menu_linux() {
+    source "$MODULES_DIR/client.sh"
+    while true; do
+        clear
+        echo -e "${CYAN}--- Client Manager (Linux) ---${NC}"
+        echo -e " ${GREEN}1)${NC} Install Client"
+        echo -e " ${YELLOW}2)${NC} Service Control & Logs"
+        echo -e " ${CYAN}3)${NC} Configuration (Server Info/Tuning)"
+        echo -e " ${YELLOW}0)${NC} Back"
+        
+        read -p "Select: " opt
+        case $opt in
+            1) check_root; install_base_deps; download_binary; install_client_linux; read -n 1 -s -r -p "Press any key..." ;;
+            2) service_control_menu "linux"; read -n 1 -s -r -p "Press any key..." ;;
+            3) check_root; configure_client_linux; read -n 1 -s -r -p "Press any key..." ;;
+            0) return ;;
+        esac
+    done
+}
+
+client_menu_openwrt() {
+    source "$MODULES_DIR/client_openwrt.sh"
+    while true; do
+        clear
+        echo -e "${MAGENTA}--- Client Manager (OpenWrt) ---${NC}"
+        echo -e " ${GREEN}1)${NC} Install Client"
+        echo -e " ${YELLOW}2)${NC} Service Control & Logs"
+        echo -e " ${CYAN}3)${NC} Configuration (Server Info/Tuning)"
+        echo -e " ${YELLOW}0)${NC} Back"
+        
+        read -p "Select: " opt
+        case $opt in
+            1) check_root; install_base_deps; download_binary; install_client_openwrt; read -n 1 -s -r -p "Press any key..." ;;
+            2) service_control_menu "openwrt"; read -n 1 -s -r -p "Press any key..." ;;
+            3) check_root; configure_client_openwrt; read -n 1 -s -r -p "Press any key..." ;;
+            0) return ;;
+        esac
+    done
+}
+
+uninstall_menu() {
+    clear
+    echo -e "${RED}--- Uninstall ---${NC}"
+    echo "1) Uninstall Server (Linux)"
+    echo "2) Uninstall Client (Linux)"
+    echo "3) Uninstall Client (OpenWrt)"
+    echo "0) Back"
+    
+    read -p "Select: " opt
+    case $opt in
+        1) source "$MODULES_DIR/server.sh"; check_root; remove_server; read -n 1 -s -r -p "Press any key..." ;;
+        2) source "$MODULES_DIR/client.sh"; check_root; remove_client_linux; read -n 1 -s -r -p "Press any key..." ;;
+        3) source "$MODULES_DIR/client_openwrt.sh"; check_root; remove_client_openwrt; read -n 1 -s -r -p "Press any key..." ;;
+        0) return ;;
+    esac
 }
 
 # --- Main ---
 if [ "$1" = "install" ]; then
-    show_menu
+    main_menu
 else
-    while true; do show_menu; done
+    while true; do main_menu; done
 fi

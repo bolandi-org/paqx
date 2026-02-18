@@ -61,4 +61,29 @@ detect_arch() {
         mips) echo "mips" ;;
         *) echo "unknown" ;;
     esac
+    esac
+}
+
+service_is_active() {
+    OS_TYPE=$(detect_os)
+    if [ "$OS_TYPE" = "openwrt" ]; then
+        if /etc/init.d/paqx enabled >/dev/null 2>&1; then
+            echo "enabled" # running logic in init.d depends, but enabled check works
+        elif pgrep -f "$BINARY_PATH run" >/dev/null; then
+            echo "active"
+        else
+            echo "inactive"
+        fi
+    else
+        systemctl is-active paqx 2>/dev/null
+    fi
+}
+
+service_is_enabled() {
+    OS_TYPE=$(detect_os)
+    if [ "$OS_TYPE" = "openwrt" ]; then
+         /etc/init.d/paqx enabled && echo "enabled" || echo "disabled"
+    else
+        systemctl is-enabled paqx 2>/dev/null
+    fi
 }

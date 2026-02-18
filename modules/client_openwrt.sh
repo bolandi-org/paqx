@@ -99,3 +99,20 @@ configure_client_openwrt() {
     /etc/init.d/paqx restart
     log_success "Configuration applied."
 }
+
+remove_client_openwrt() {
+    echo -e "${RED}${BOLD}WARNING: This will remove PaqX Client, config, and binaries.${NC}"
+    read -p "Are you sure? (y/N): " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then return; fi
+    
+    log_info "Stopping service..."
+    /etc/init.d/paqx stop
+    /etc/init.d/paqx disable
+    rm "$SERVICE_FILE_OPENWRT"
+    
+    log_info "Removing files..."
+    rm -f "$BINARY_PATH"
+    rm -rf "$CONF_DIR"
+    
+    log_success "PaqX Client uninstalled."
+}
