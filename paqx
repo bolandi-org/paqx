@@ -149,21 +149,31 @@ download_binary() {
     fi
     
     tar -xzf "/tmp/paqet.tar.gz" -C "/tmp"
-    local bin=$(find /tmp -type f -name "paqet*" | head -n 1)
+    
+    # Precise find: exclude the archive itself, find files named 'paqet' or 'paqet-linux-*'
+    local bin=$(find /tmp -type f -name "paqet*" ! -name "*.tar.gz" | head -n 1)
     
     if [ -f "$bin" ]; then
         # Check if binary is executable format (not HTML error page)
-        if file "$bin" | grep -qE 'ELF|executable'; then
+        # Using simple check first, 'file' might not be available on all minimal systems?
+        # Assuming we added 'file' dep earlier, but let's be robust.
+        local file_type=$(file "$bin" 2>/dev/null)
+        
+        if echo "$file_type" | grep -qE 'ELF|executable'; then
             mkdir -p "$(dirname "$BINARY_PATH")"
             mv "$bin" "$BINARY_PATH"
             chmod +x "$BINARY_PATH"
             rm -f "/tmp/paqet.tar.gz"
             log_success "Binary installed ($arch)."
         else
-            log_error "Downloaded file is not a valid binary. (Exec format error prevention)"
-            rm -f "/tmp/paqet.tar.gz" "$bin"
+            log_error "Validation fail: File '$bin' is type: '$file_type'"
+            # rm -f "/tmp/paqet.tar.gz" "$bin" 
             return 1
         fi
+    else
+        log_error "Binary not found in extracted archive."
+        return 1
+    fi
     else
         log_error "Binary not found in archive."
         return 1
