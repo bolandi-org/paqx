@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 
 # Override globals if running locally
-if [ -d "$ROOT_DIR/lib" ]; then
+if [ -f "$ROOT_DIR/lib/core.sh" ]; then
     PAQX_ROOT="$ROOT_DIR"
     LIB_DIR="$PAQX_ROOT/lib"
     MODULES_DIR="$PAQX_ROOT/modules"
