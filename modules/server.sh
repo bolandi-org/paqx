@@ -34,7 +34,6 @@ calculate_config() {
     
     log_info "System: ${total_mem}MB RAM, ${cpu_cores} Cores"
     
-    # Defaults
     CONF_SNDWND=1024; CONF_RCVWND=1024; CONF_CONN=1; CONF_SOCKBUF=4194304
     
     if [ "$total_mem" -gt 4000 ]; then
@@ -61,37 +60,42 @@ apply_firewall() {
         fi
     fi
     
-    # IPTables fallback
     iptables -t raw -I PREROUTING -p tcp --dport "$port" -j NOTRACK >/dev/null 2>&1
     iptables -t raw -I OUTPUT -p tcp --sport "$port" -j NOTRACK >/dev/null 2>&1
     iptables -t mangle -I OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP >/dev/null 2>&1
     log_success "IPTables rules applied."
 }
 
-install_server() {
-    optimize_kernel
-    
-    echo -e "\n${BOLD}--- Server Installation ---${NC}"
+# --- FIRST RUN: Pre-install prompts ---
+
+SRV_PORT=""
+SRV_KEY=""
+
+server_pre_install() {
+    echo -e "\n${BOLD}--- Server Configuration ---${NC}"
     echo "1) Automatic (Random Port)"
-    echo "2) Manual (Custom Port)"
+    echo "2) Manual (Custom Port & Protocol Settings)"
     read -p "Select [1]: " p_mode
     p_mode=${p_mode:-1}
     
-    local PORT=""
-    
     if [ "$p_mode" = "1" ]; then
-        PORT=$(shuf -i 2000-65000 -n 1)
-        log_info "Selected Port: $PORT"
+        SRV_PORT=$(shuf -i 2000-65000 -n 1)
+        log_info "Selected Port: $SRV_PORT"
     else
-        read -p "Listen Port [8443]: " PORT
-        PORT=${PORT:-8443}
+        read -p "Listen Port [8443]: " SRV_PORT
+        SRV_PORT=${SRV_PORT:-8443}
     fi
+}
+
+# --- FIRST RUN: Install server ---
+
+install_server() {
+    if [ -z "$SRV_PORT" ]; then server_pre_install; fi
     
-    KEY=$(generate_key)
-    log_success "Key Generated: $KEY"
-    
+    optimize_kernel
     calculate_config
     IFACE=$(scan_interface)
+    SRV_KEY=$(generate_key)
     
     mkdir -p "$CONF_DIR"
     cat > "$CONF_FILE" <<EOF
@@ -99,22 +103,31 @@ role: "server"
 log:
   level: "info"
 listen:
-  addr: ":$PORT"
+  addr: ":$SRV_PORT"
 network:
   interface: "$IFACE"
   ipv4:
-    addr: "0.0.0.0:$PORT"
+    addr: "0.0.0.0:$SRV_PORT"
 transport:
   protocol: "kcp"
   kcp:
     mode: "fast"
+    conn: $CONF_CONN
     nodelay: 1
     interval: 10
     resend: 2
     nocongestion: 1
-    sndwnd: $CONF_SNDWND
+    wdelay: false
+    acknodelay: true
+    mtu: 1350
     rcvwnd: $CONF_RCVWND
-    key: "$KEY"
+    sndwnd: $CONF_SNDWND
+    block: "aes"
+    key: "$SRV_KEY"
+    smuxbuf: 4194304
+    streambuf: 2097152
+    dshard: 10
+    pshard: 3
   pcap:
     sockbuf: $CONF_SOCKBUF
 EOF
@@ -138,70 +151,94 @@ EOF
     systemctl enable paqx
     systemctl start paqx
     
-    apply_firewall "$PORT"
+    apply_firewall "$SRV_PORT"
     
     PUB_IP=$(get_public_ip)
     
     echo -e "\n${GREEN}${BOLD}Server Installed!${NC}"
     echo -e "IP:   ${YELLOW}$PUB_IP${NC}"
-    echo -e "Port: ${YELLOW}$PORT${NC}"
-    echo -e "Key:  ${YELLOW}$KEY${NC}"
-    
-    # Save info for dashboard display if needed, but config has it.
+    echo -e "Port: ${YELLOW}$SRV_PORT${NC}"
+    echo -e "Key:  ${YELLOW}$SRV_KEY${NC}"
 }
+
+# --- SECOND RUN: Settings submenu ---
 
 configure_server() {
-    echo -e "\n${BOLD}--- Server Settings ---${NC}"
-    echo "1) Change Listen Port"
-    echo "2) Reset Encryption Key"
-    echo "0) Back"
-    read -p "Select: " s_opt
-    
-    case $s_opt in
-        1)
-            read -p "New Port: " NEW_PORT
-            # Remove old firewall rules if possible (tricky without tracking old port)
-            # For now, just apply new rules. 
-            # Ideally we read old port from config.
-            OLD_PORT=$(grep "addr: \":" "$CONF_FILE" | cut -d ':' -f 3 | tr -d '"')
-            
-            sed -i "s/addr: \":$OLD_PORT\"/addr: \":$NEW_PORT\"/" "$CONF_FILE"
-            sed -i "s/addr: \"0.0.0.0:$OLD_PORT\"/addr: \"0.0.0.0:$NEW_PORT\"/" "$CONF_FILE"
-            
-            apply_firewall "$NEW_PORT"
-            log_success "Port updated to $NEW_PORT"
-            ;;
-        2)
-            NEW_KEY=$(generate_key)
-            sed -i "s/key: .*/key: \"$NEW_KEY\"/" "$CONF_FILE"
-            log_success "New Key: $NEW_KEY"
-            ;;
-        *) return ;;
-    esac
-    
-    log_info "Restarting service..."
-    systemctl restart paqx
+    while true; do
+        echo -e "\n${BOLD}--- Server Settings ---${NC}"
+        echo "1) Change Port"
+        echo "2) Regenerate Encrypted Key"
+        echo "3) Change Protocol Setting"
+        echo "0) Back"
+        read -p "Select: " s_opt
+        
+        case $s_opt in
+            1)
+                read -p "New Port: " NEW_PORT
+                OLD_PORT=$(grep "addr: \":" "$CONF_FILE" | head -1 | cut -d ':' -f 3 | tr -d '"')
+                
+                sed -i "s/addr: \":$OLD_PORT\"/addr: \":$NEW_PORT\"/" "$CONF_FILE"
+                sed -i "s/addr: \"0.0.0.0:$OLD_PORT\"/addr: \"0.0.0.0:$NEW_PORT\"/" "$CONF_FILE"
+                
+                apply_firewall "$NEW_PORT"
+                log_success "Port changed to $NEW_PORT"
+                log_info "Restarting service..."
+                systemctl restart paqx
+                ;;
+            2)
+                NEW_KEY=$(generate_key)
+                sed -i "s/key: .*/key: \"$NEW_KEY\"/" "$CONF_FILE"
+                log_success "New Key: $NEW_KEY"
+                log_info "Restarting service..."
+                systemctl restart paqx
+                ;;
+            3)
+                echo -e "\n${YELLOW}--- Protocol Settings ---${NC}"
+                echo "Current values (leave blank to keep):"
+                
+                read -p "conn [1]: " val; [ -n "$val" ] && sed -i "s/conn: .*/conn: $val/" "$CONF_FILE"
+                read -p "nodelay [1]: " val; [ -n "$val" ] && sed -i "s/nodelay: .*/nodelay: $val/" "$CONF_FILE"
+                read -p "interval [10]: " val; [ -n "$val" ] && sed -i "s/interval: .*/interval: $val/" "$CONF_FILE"
+                read -p "resend [2]: " val; [ -n "$val" ] && sed -i "s/resend: .*/resend: $val/" "$CONF_FILE"
+                read -p "nocongestion [1]: " val; [ -n "$val" ] && sed -i "s/nocongestion: .*/nocongestion: $val/" "$CONF_FILE"
+                read -p "wdelay [false]: " val; [ -n "$val" ] && sed -i "s/wdelay: .*/wdelay: $val/" "$CONF_FILE"
+                read -p "acknodelay [true]: " val; [ -n "$val" ] && sed -i "s/acknodelay: .*/acknodelay: $val/" "$CONF_FILE"
+                read -p "mtu [1350]: " val; [ -n "$val" ] && sed -i "s/mtu: .*/mtu: $val/" "$CONF_FILE"
+                read -p "rcvwnd [1024]: " val; [ -n "$val" ] && sed -i "s/rcvwnd: .*/rcvwnd: $val/" "$CONF_FILE"
+                read -p "sndwnd [1024]: " val; [ -n "$val" ] && sed -i "s/sndwnd: .*/sndwnd: $val/" "$CONF_FILE"
+                read -p "block [aes]: " val; [ -n "$val" ] && sed -i "s/block: .*/block: \"$val\"/" "$CONF_FILE"
+                read -p "smuxbuf [4194304]: " val; [ -n "$val" ] && sed -i "s/smuxbuf: .*/smuxbuf: $val/" "$CONF_FILE"
+                read -p "streambuf [2097152]: " val; [ -n "$val" ] && sed -i "s/streambuf: .*/streambuf: $val/" "$CONF_FILE"
+                read -p "dshard [10]: " val; [ -n "$val" ] && sed -i "s/dshard: .*/dshard: $val/" "$CONF_FILE"
+                read -p "pshard [3]: " val; [ -n "$val" ] && sed -i "s/pshard: .*/pshard: $val/" "$CONF_FILE"
+                
+                log_success "Protocol settings updated."
+                log_info "Restarting service..."
+                systemctl restart paqx
+                ;;
+            0|*) return ;;
+        esac
+    done
 }
 
+# --- Uninstall ---
+
 remove_server() {
-    echo -e "${RED}${BOLD}WARNING: This will remove PaqX Server, config, and binaries.${NC}"
+    echo -e "${RED}${BOLD}WARNING: This will remove PaqX Server completely.${NC}"
     read -p "Are you sure? (y/N): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then return; fi
     
     log_info "Stopping service..."
     systemctl stop paqx
     systemctl disable paqx
-    rm "$SERVICE_FILE_LINUX"
+    rm -f "$SERVICE_FILE_LINUX"
     systemctl daemon-reload
     
     log_info "Removing files..."
     rm -f "$BINARY_PATH"
     rm -rf "$CONF_DIR"
-    
-    # Firewall cleanup is tricky without explicit rule deletion. 
-    # Flushing raw/mangle tables completely is dangerous.
-    # Leaving rules is safer than breaking other things, but prompt user?
-    # For now, we leave rules or try simple deletion if port known.
+    rm -rf "$PAQX_ROOT"
+    rm -f "/usr/bin/paqx"
     
     log_success "PaqX Server uninstalled."
 }
