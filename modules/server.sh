@@ -72,9 +72,9 @@ SRV_PORT=""
 SRV_KEY=""
 
 server_pre_install() {
-    echo -e "\n${BOLD}--- Server Configuration ---${NC}"
+    echo -e "\n${BOLD}--- Server Installation ---${NC}"
     echo "1) Automatic (Random Port)"
-    echo "2) Manual (Custom Port & Protocol Settings)"
+    echo "2) Manual (Custom Port)"
     read -p "Select [1]: " p_mode
     p_mode=${p_mode:-1}
     
