@@ -289,10 +289,12 @@ configure_server() {
         case $s_opt in
             1)
                 read -p "New Port: " NEW_PORT
-                OLD_PORT=$(grep "addr: \":" "$CONF_FILE" | head -1 | cut -d ':' -f 3 | tr -d '"')
+                OLD_PORT=$(grep 'addr: ":' "$CONF_FILE" | head -1 | grep -oP ':\K[0-9]+')
                 
+                # Update listen addr
                 sed -i "s/addr: \":$OLD_PORT\"/addr: \":$NEW_PORT\"/" "$CONF_FILE"
-                sed -i "s/addr: \"0.0.0.0:$OLD_PORT\"/addr: \"0.0.0.0:$NEW_PORT\"/" "$CONF_FILE"
+                # Update ipv4 addr (any IP:PORT pattern)
+                sed -i "s/\(addr: \"[0-9.]*:\)$OLD_PORT\"/\1$NEW_PORT\"/" "$CONF_FILE"
                 
                 apply_firewall "$NEW_PORT"
                 log_success "Port changed to $NEW_PORT"
