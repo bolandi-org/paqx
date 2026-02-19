@@ -364,43 +364,45 @@ function Show-Dashboard {
         Write-CL "  +$border+" "Cyan"
 
         Write-CL ""
-        Write-CL "   1) Start"
-        Write-CL "   2) Stop"
-        Write-CL "   3) Restart"
-        Write-CL "   4) Settings"
-        Write-CL "   5) Logs"
-        Write-CL "   6) Update Core"
-        Write-CL "   7) Uninstall"
+        Write-CL "   1) Status"
+        Write-CL "   2) Log"
+        Write-CL "   3) Start/Stop"
+        Write-CL "   4) Restart"
+        Write-CL "   5) Disable/Enable"
+        Write-CL "   6) Settings"
+        Write-CL "   7) Update Core"
+        Write-CL "   8) Downgrade Core"
+        Write-CL "   9) Uninstall"
         Write-CL "   0) Exit"
         Write-CL ""
         $opt = Read-Host "  Select"
 
         switch ($opt) {
             "1" {
-                Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-                Write-OK "Started."
-                Start-Sleep -Seconds 2
+                # Status
+                Write-CL ""
+                $proc = Get-Process -Name "paqet" -ErrorAction SilentlyContinue
+                if ($proc) {
+                    Write-OK "paqet process running (PID: $($proc.Id))"
+                }
+                else {
+                    Write-Warn "paqet process not found."
+                }
+                Write-CL ""
+                $ti = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Get-ScheduledTaskInfo
+                if ($ti) {
+                    Write-CL "  Last Run:    $($ti.LastRunTime)" "Gray"
+                    Write-CL "  Task Result: $($ti.LastTaskResult)" "Gray"
+                }
+                Write-CL ""
+                Read-Host "Press Enter to continue"
             }
             "2" {
-                Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-                Write-OK "Stopped."
-                Start-Sleep -Seconds 2
-            }
-            "3" {
-                Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-                Start-Sleep -Seconds 1
-                Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-                Write-OK "Restarted."
-                Start-Sleep -Seconds 2
-            }
-            "4" { Show-Settings }
-            "5" {
+                # Log
                 Write-CL ""
                 if (Test-Path $LogPath) {
                     $logLines = Get-Content $LogPath -Tail 10 -ErrorAction SilentlyContinue
                     if ($logLines) {
-                        Write-Info "Last 10 log entries:"
-                        Write-CL ""
                         foreach ($l in $logLines) {
                             Write-CL "  $l" "Gray"
                         }
@@ -415,7 +417,46 @@ function Show-Dashboard {
                 Write-CL ""
                 Read-Host "Press Enter to continue"
             }
-            "6" {
+            "3" {
+                # Start/Stop toggle
+                if ($isRunning) {
+                    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+                    Stop-Process -Name "paqet" -Force -ErrorAction SilentlyContinue
+                    Write-OK "Stopped."
+                }
+                else {
+                    Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+                    Write-OK "Started."
+                }
+                Start-Sleep -Seconds 2
+            }
+            "4" {
+                # Restart
+                Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+                Stop-Process -Name "paqet" -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 1
+                Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+                Write-OK "Restarted."
+                Start-Sleep -Seconds 2
+            }
+            "5" {
+                # Disable/Enable toggle
+                $t = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+                if ($t) {
+                    if ($t.State -eq "Disabled") {
+                        Enable-ScheduledTask -TaskName $TaskName | Out-Null
+                        Write-OK "Auto-start enabled."
+                    }
+                    else {
+                        Disable-ScheduledTask -TaskName $TaskName | Out-Null
+                        Write-OK "Auto-start disabled."
+                    }
+                }
+                Start-Sleep -Seconds 2
+            }
+            "6" { Show-Settings }
+            "7" {
+                # Update Core
                 Write-Info "Stopping service..."
                 Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
                 Start-Sleep -Seconds 1
@@ -426,7 +467,62 @@ function Show-Dashboard {
                 }
                 Start-Sleep -Seconds 2
             }
-            "7" {
+            "8" {
+                # Downgrade Core
+                Write-CL ""
+                Write-Info "Fetching available releases..."
+                try {
+                    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                    $apiUrl = "https://api.github.com/repos/$RepoOwner/$RepoName/releases"
+                    $releases = Invoke-RestMethod -Uri $apiUrl -Headers @{"User-Agent" = "PaqX" } -UseBasicParsing
+                    $versions = $releases | Select-Object -First 10 | ForEach-Object { $_.tag_name }
+                    Write-CL ""
+                    for ($i = 0; $i -lt $versions.Count; $i++) {
+                        Write-CL "  $($i+1)) $($versions[$i])"
+                    }
+                    Write-CL "  0) Cancel"
+                    Write-CL ""
+                    $pick = Read-Host "  Select version"
+                    if ($pick -ne "0" -and $pick -match '^\d+$') {
+                        $idx = [int]$pick - 1
+                        if ($idx -ge 0 -and $idx -lt $versions.Count) {
+                            $selTag = $versions[$idx]
+                            $selRelease = $releases | Where-Object { $_.tag_name -eq $selTag }
+                            $asset = $selRelease.assets | Where-Object { $_.name -match "windows.*amd64.*\.zip$" } | Select-Object -First 1
+                            if ($asset) {
+                                Write-Info "Stopping service..."
+                                Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+                                Stop-Process -Name "paqet" -Force -ErrorAction SilentlyContinue
+                                Start-Sleep 1
+
+                                $zipPath = Join-Path $env:TEMP "paqet-win.zip"
+                                $extractDir = Join-Path $env:TEMP "paqet-extract"
+                                Write-Info "Downloading $($asset.name)..."
+                                Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -UseBasicParsing
+                                if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+                                Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+                                $exe = Get-ChildItem -Path $extractDir -Recurse -Filter "*.exe" | Select-Object -First 1
+                                if ($exe) {
+                                    Copy-Item -Path $exe.FullName -Destination $BinaryPath -Force
+                                    Write-OK "Downgraded to $selTag"
+                                }
+                                Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+                                Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+                                Start-ScheduledTask -TaskName $TaskName
+                                Write-OK "Restarted."
+                            }
+                            else {
+                                Write-Err "No Windows binary found for $selTag"
+                            }
+                        }
+                    }
+                }
+                catch {
+                    Write-Err "Failed to fetch releases: $_"
+                }
+                Start-Sleep -Seconds 2
+            }
+            "9" {
                 Uninstall-PaqX
                 return
             }
