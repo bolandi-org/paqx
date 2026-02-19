@@ -220,35 +220,50 @@ downgrade_core() {
 
 # --- Server Panel ---
 panel_server() {
-    # Read config values once per loop
-    local srv_port=$(grep 'addr: ":' "$CONF_FILE" 2>/dev/null | head -1 | grep -oP ':\K[0-9]+')
-    local srv_key=$(grep 'key:' "$CONF_FILE" 2>/dev/null | head -1 | grep -oP '"[^"]*"' | tr -d '"')
     local srv_ip=$(get_public_ip)
     
     while true; do
+        # Re-read config every loop iteration
+        local srv_port=$(grep 'addr: ":' "$CONF_FILE" 2>/dev/null | head -1 | grep -oP ':\K[0-9]+')
+        local srv_key=$(grep 'key:' "$CONF_FILE" 2>/dev/null | head -1 | grep -oP '"[^"]*"' | tr -d '"')
+        local is_running=false
+        systemctl is-active --quiet paqx && is_running=true
+        local is_enabled=$(systemctl is-enabled paqx 2>/dev/null)
+        
+        # Prepare card content
+        local status_str=""
+        if $is_running; then status_str="● Running"; else status_str="● Stopped"; fi
+        local auto_str=""
+        [ "$is_enabled" = "enabled" ] && auto_str="Enabled" || auto_str="Disabled"
+        
+        local addr_str="${srv_ip}:${srv_port}"
+        local key_str="${srv_key}"
+        
+        # Calculate dynamic width
+        local max_len=${#addr_str}
+        [ ${#key_str} -gt $max_len ] && max_len=${#key_str}
+        local card_w=$((max_len + 14))
+        [ $card_w -lt 38 ] && card_w=38
+        local border=$(printf '─%.0s' $(seq 1 $card_w))
+        local sep=$(printf '─%.0s' $(seq 1 $card_w))
+        
         clear
         echo -e "${BLUE}╔═══════════════════════════════╗${NC}"
         echo -e "${BLUE}║       PaqX Server Panel       ║${NC}"
         echo -e "${BLUE}╚═══════════════════════════════╝${NC}"
-        
-        if systemctl is-active --quiet paqx; then
-            echo -e "Status: ${GREEN}● Running${NC}"
-        else
-            echo -e "Status: ${RED}● Stopped${NC}"
-        fi
-        
-        local is_enabled=$(systemctl is-enabled paqx 2>/dev/null)
-        echo -e "Autostart: $([ "$is_enabled" = "enabled" ] && echo "${GREEN}Enabled${NC}" || echo "${RED}Disabled${NC}")"
-        
-        # Connection info card
         echo ""
-        local addr_str="${srv_ip}:${srv_port}"
-        local key_str="${srv_key}"
-        local max_len=${#addr_str}
-        [ ${#key_str} -gt $max_len ] && max_len=${#key_str}
-        local card_w=$((max_len + 14))
-        local border=$(printf '─%.0s' $(seq 1 $card_w))
         echo -e "${CYAN}┌${border}┐${NC}"
+        if $is_running; then
+            echo -e "${CYAN}│${NC} ${BOLD}Status:${NC}   ${GREEN}${status_str}${NC}$(printf '%*s' $((card_w - ${#status_str} - 11)) '')${CYAN}│${NC}"
+        else
+            echo -e "${CYAN}│${NC} ${BOLD}Status:${NC}   ${RED}${status_str}${NC}$(printf '%*s' $((card_w - ${#status_str} - 11)) '')${CYAN}│${NC}"
+        fi
+        if [ "$is_enabled" = "enabled" ]; then
+            echo -e "${CYAN}│${NC} ${BOLD}Auto:${NC}     ${GREEN}${auto_str}${NC}$(printf '%*s' $((card_w - ${#auto_str} - 11)) '')${CYAN}│${NC}"
+        else
+            echo -e "${CYAN}│${NC} ${BOLD}Auto:${NC}     ${RED}${auto_str}${NC}$(printf '%*s' $((card_w - ${#auto_str} - 11)) '')${CYAN}│${NC}"
+        fi
+        echo -e "${CYAN}├${sep}┤${NC}"
         echo -e "${CYAN}│${NC} ${BOLD}Address:${NC}  ${YELLOW}${addr_str}${NC}$(printf '%*s' $((card_w - ${#addr_str} - 11)) '')${CYAN}│${NC}"
         echo -e "${CYAN}│${NC} ${BOLD}Key:${NC}      ${YELLOW}${key_str}${NC}$(printf '%*s' $((card_w - ${#key_str} - 11)) '')${CYAN}│${NC}"
         echo -e "${CYAN}└${border}┘${NC}"
