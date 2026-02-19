@@ -80,15 +80,15 @@ server_pre_install() {
     
     # Step 2: Protocol mode
     echo ""
-    echo "1) Automatic (Recommended - based on server specs)"
-    echo "2) Manual (Configure all protocol values)"
+    echo "1) Simple (Fast mode, key only - no extra params)"
+    echo "2) Automatic (Recommended - tuned to server specs)"
+    echo "3) Manual (Configure all protocol values)"
     read -p "Select [1]: " p_mode
     p_mode=${p_mode:-1}
     
-    if [ "$p_mode" = "2" ]; then
+    if [ "$p_mode" = "3" ]; then
         echo -e "\n${YELLOW}--- Protocol Settings ---${NC}"
         echo "Enter values (press Enter for default):"
-
         read -p "nodelay [1]: " P_NODELAY; P_NODELAY=${P_NODELAY:-1}
         read -p "interval [10]: " P_INTERVAL; P_INTERVAL=${P_INTERVAL:-10}
         read -p "resend [2]: " P_RESEND; P_RESEND=${P_RESEND:-2}
@@ -103,9 +103,11 @@ server_pre_install() {
         read -p "streambuf [2097152]: " P_STREAMBUF; P_STREAMBUF=${P_STREAMBUF:-2097152}
         read -p "dshard [10]: " P_DSHARD; P_DSHARD=${P_DSHARD:-10}
         read -p "pshard [3]: " P_PSHARD; P_PSHARD=${P_PSHARD:-3}
-        SRV_MANUAL=1
+        SRV_PROTO_MODE=manual
+    elif [ "$p_mode" = "2" ]; then
+        SRV_PROTO_MODE=auto
     else
-        SRV_MANUAL=0
+        SRV_PROTO_MODE=simple
     fi
 }
 
@@ -134,20 +136,33 @@ install_server() {
         fi
     fi
     
-    if [ "$SRV_MANUAL" = "1" ]; then
-        CONF_RCVWND=$P_RCVWND
-        CONF_SNDWND=$P_SNDWND
-        CONF_SOCKBUF=4194304
-    else
-        calculate_config
-        P_NODELAY=1; P_INTERVAL=10; P_RESEND=2; P_NOCONG=1
-        P_WDELAY=false; P_ACKNO=true; P_MTU=1350
-        P_RCVWND=$CONF_RCVWND; P_SNDWND=$CONF_SNDWND
-        P_BLOCK=aes; P_SMUXBUF=4194304; P_STREAMBUF=2097152; P_DSHARD=10; P_PSHARD=3
-    fi
-    
     mkdir -p "$CONF_DIR"
-    cat > "$CONF_FILE" <<EOF
+    
+    if [ "$SRV_PROTO_MODE" = "simple" ]; then
+        # Simple: just mode + key, like paqctl
+        cat > "$CONF_FILE" <<EOF
+role: "server"
+
+log:
+  level: "info"
+
+listen:
+  addr: ":${SRV_PORT}"
+
+network:
+  interface: "${IFACE}"
+  ipv4:
+    addr: "${LOCAL_IP}:${SRV_PORT}"
+    router_mac: "${GW_MAC}"
+
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    key: "${SRV_KEY}"
+EOF
+    elif [ "$SRV_PROTO_MODE" = "manual" ]; then
+        cat > "$CONF_FILE" <<EOF
 role: "server"
 
 log:
@@ -182,6 +197,45 @@ transport:
     dshard: $P_DSHARD
     pshard: $P_PSHARD
 EOF
+    else
+        # Auto: calculate based on server specs
+        calculate_config
+        cat > "$CONF_FILE" <<EOF
+role: "server"
+
+log:
+  level: "info"
+
+listen:
+  addr: ":${SRV_PORT}"
+
+network:
+  interface: "${IFACE}"
+  ipv4:
+    addr: "${LOCAL_IP}:${SRV_PORT}"
+    router_mac: "${GW_MAC}"
+
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    nodelay: 1
+    interval: 10
+    resend: 2
+    nocongestion: 1
+    wdelay: false
+    acknodelay: true
+    mtu: 1350
+    rcvwnd: $CONF_RCVWND
+    sndwnd: $CONF_SNDWND
+    block: "aes"
+    key: "${SRV_KEY}"
+    smuxbuf: 4194304
+    streambuf: 2097152
+    dshard: 10
+    pshard: 3
+EOF
+    fi
 
     cat > "$SERVICE_FILE_LINUX" <<EOF
 [Unit]
@@ -253,26 +307,101 @@ configure_server() {
                 systemctl restart paqx
                 ;;
             3)
-                echo -e "\n${YELLOW}--- Protocol Settings ---${NC}"
-                echo "Current values (leave blank to keep):"
+                echo -e "\n${YELLOW}--- Change Protocol Mode ---${NC}"
+                echo "1) Simple (Fast mode, key only)"
+                echo "2) Automatic (Tuned to server specs)"
+                echo "3) Manual (Configure all values)"
+                read -p "Select: " pm
                 
-
-                read -p "nodelay [1]: " val; [ -n "$val" ] && sed -i "s/nodelay: .*/nodelay: $val/" "$CONF_FILE"
-                read -p "interval [10]: " val; [ -n "$val" ] && sed -i "s/interval: .*/interval: $val/" "$CONF_FILE"
-                read -p "resend [2]: " val; [ -n "$val" ] && sed -i "s/resend: .*/resend: $val/" "$CONF_FILE"
-                read -p "nocongestion [1]: " val; [ -n "$val" ] && sed -i "s/nocongestion: .*/nocongestion: $val/" "$CONF_FILE"
-                read -p "wdelay [false]: " val; [ -n "$val" ] && sed -i "s/wdelay: .*/wdelay: $val/" "$CONF_FILE"
-                read -p "acknodelay [true]: " val; [ -n "$val" ] && sed -i "s/acknodelay: .*/acknodelay: $val/" "$CONF_FILE"
-                read -p "mtu [1350]: " val; [ -n "$val" ] && sed -i "s/mtu: .*/mtu: $val/" "$CONF_FILE"
-                read -p "rcvwnd [1024]: " val; [ -n "$val" ] && sed -i "s/rcvwnd: .*/rcvwnd: $val/" "$CONF_FILE"
-                read -p "sndwnd [1024]: " val; [ -n "$val" ] && sed -i "s/sndwnd: .*/sndwnd: $val/" "$CONF_FILE"
-                read -p "block [aes]: " val; [ -n "$val" ] && sed -i "s/block: .*/block: \"$val\"/" "$CONF_FILE"
-                read -p "smuxbuf [4194304]: " val; [ -n "$val" ] && sed -i "s/smuxbuf: .*/smuxbuf: $val/" "$CONF_FILE"
-                read -p "streambuf [2097152]: " val; [ -n "$val" ] && sed -i "s/streambuf: .*/streambuf: $val/" "$CONF_FILE"
-                read -p "dshard [10]: " val; [ -n "$val" ] && sed -i "s/dshard: .*/dshard: $val/" "$CONF_FILE"
-                read -p "pshard [3]: " val; [ -n "$val" ] && sed -i "s/pshard: .*/pshard: $val/" "$CONF_FILE"
+                # Read current key from config
+                local cur_key=$(grep 'key:' "$CONF_FILE" | head -1 | grep -oP '"[^"]*"' | tr -d '"')
                 
-                log_success "Protocol settings updated."
+                if [ "$pm" = "1" ]; then
+                    # Rewrite transport section to simple
+                    # Keep everything above transport, rewrite transport
+                    local tmp_head=$(sed -n '1,/^transport:/{ /^transport:/!p }' "$CONF_FILE")
+                    cat > "$CONF_FILE" <<EOF
+${tmp_head}
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    key: "${cur_key}"
+EOF
+                    log_success "Switched to Simple mode."
+                elif [ "$pm" = "2" ]; then
+                    calculate_config
+                    local tmp_head=$(sed -n '1,/^transport:/{ /^transport:/!p }' "$CONF_FILE")
+                    cat > "$CONF_FILE" <<EOF
+${tmp_head}
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    nodelay: 1
+    interval: 10
+    resend: 2
+    nocongestion: 1
+    wdelay: false
+    acknodelay: true
+    mtu: 1350
+    rcvwnd: $CONF_RCVWND
+    sndwnd: $CONF_SNDWND
+    block: "aes"
+    key: "${cur_key}"
+    smuxbuf: 4194304
+    streambuf: 2097152
+    dshard: 10
+    pshard: 3
+EOF
+                    log_success "Switched to Automatic mode."
+                elif [ "$pm" = "3" ]; then
+                    echo -e "\n${YELLOW}--- Protocol Settings ---${NC}"
+                    echo "Enter values (press Enter for default):"
+                    read -p "nodelay [1]: " val_nd; val_nd=${val_nd:-1}
+                    read -p "interval [10]: " val_iv; val_iv=${val_iv:-10}
+                    read -p "resend [2]: " val_rs; val_rs=${val_rs:-2}
+                    read -p "nocongestion [1]: " val_nc; val_nc=${val_nc:-1}
+                    read -p "wdelay [false]: " val_wd; val_wd=${val_wd:-false}
+                    read -p "acknodelay [true]: " val_an; val_an=${val_an:-true}
+                    read -p "mtu [1350]: " val_mt; val_mt=${val_mt:-1350}
+                    read -p "rcvwnd [1024]: " val_rw; val_rw=${val_rw:-1024}
+                    read -p "sndwnd [1024]: " val_sw; val_sw=${val_sw:-1024}
+                    read -p "block [aes]: " val_bl; val_bl=${val_bl:-aes}
+                    read -p "smuxbuf [4194304]: " val_sb; val_sb=${val_sb:-4194304}
+                    read -p "streambuf [2097152]: " val_stb; val_stb=${val_stb:-2097152}
+                    read -p "dshard [10]: " val_ds; val_ds=${val_ds:-10}
+                    read -p "pshard [3]: " val_ps; val_ps=${val_ps:-3}
+                    
+                    local tmp_head=$(sed -n '1,/^transport:/{ /^transport:/!p }' "$CONF_FILE")
+                    cat > "$CONF_FILE" <<EOF
+${tmp_head}
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    nodelay: $val_nd
+    interval: $val_iv
+    resend: $val_rs
+    nocongestion: $val_nc
+    wdelay: $val_wd
+    acknodelay: $val_an
+    mtu: $val_mt
+    rcvwnd: $val_rw
+    sndwnd: $val_sw
+    block: "$val_bl"
+    key: "${cur_key}"
+    smuxbuf: $val_sb
+    streambuf: $val_stb
+    dshard: $val_ds
+    pshard: $val_ps
+EOF
+                    log_success "Manual protocol settings applied."
+                else
+                    log_warn "Invalid selection."
+                    continue
+                fi
+                
                 log_info "Restarting service..."
                 systemctl restart paqx
                 ;;
