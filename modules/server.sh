@@ -88,7 +88,7 @@ server_pre_install() {
     if [ "$p_mode" = "2" ]; then
         echo -e "\n${YELLOW}--- Protocol Settings ---${NC}"
         echo "Enter values (press Enter for default):"
-        read -p "conn [1]: " P_CONN; P_CONN=${P_CONN:-1}
+
         read -p "nodelay [1]: " P_NODELAY; P_NODELAY=${P_NODELAY:-1}
         read -p "interval [10]: " P_INTERVAL; P_INTERVAL=${P_INTERVAL:-10}
         read -p "resend [2]: " P_RESEND; P_RESEND=${P_RESEND:-2}
@@ -120,14 +120,13 @@ install_server() {
     
     if [ "$SRV_MANUAL" = "1" ]; then
         # Use user-provided values
-        CONF_CONN=$P_CONN
         CONF_RCVWND=$P_RCVWND
         CONF_SNDWND=$P_SNDWND
         CONF_SOCKBUF=4194304
     else
         # Auto-calculate based on server specs
         calculate_config
-        P_CONN=$CONF_CONN; P_NODELAY=1; P_INTERVAL=10; P_RESEND=2; P_NOCONG=1
+        P_NODELAY=1; P_INTERVAL=10; P_RESEND=2; P_NOCONG=1
         P_WDELAY=false; P_ACKNO=true; P_MTU=1350
         P_RCVWND=$CONF_RCVWND; P_SNDWND=$CONF_SNDWND
         P_BLOCK=aes; P_SMUXBUF=4194304; P_STREAMBUF=2097152; P_DSHARD=10; P_PSHARD=3
@@ -148,7 +147,7 @@ transport:
   protocol: "kcp"
   kcp:
     mode: "fast"
-    conn: $P_CONN
+
     nodelay: $P_NODELAY
     interval: $P_INTERVAL
     resend: $P_RESEND
@@ -232,7 +231,7 @@ configure_server() {
                 echo -e "\n${YELLOW}--- Protocol Settings ---${NC}"
                 echo "Current values (leave blank to keep):"
                 
-                read -p "conn [1]: " val; [ -n "$val" ] && sed -i "s/conn: .*/conn: $val/" "$CONF_FILE"
+
                 read -p "nodelay [1]: " val; [ -n "$val" ] && sed -i "s/nodelay: .*/nodelay: $val/" "$CONF_FILE"
                 read -p "interval [10]: " val; [ -n "$val" ] && sed -i "s/interval: .*/interval: $val/" "$CONF_FILE"
                 read -p "resend [2]: " val; [ -n "$val" ] && sed -i "s/resend: .*/resend: $val/" "$CONF_FILE"
