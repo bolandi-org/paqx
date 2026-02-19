@@ -32,6 +32,16 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercont
 
 > **Note:** [Npcap](https://npcap.com/#download) is required. The script will detect if it's missing and offer to download it automatically.
 
+### 📡 OpenWrt Client
+
+SSH into your router and run:
+
+```sh
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
+```
+
+After first setup, use `paqx` command to manage.
+
 ---
 
 ## Features
@@ -159,6 +169,16 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercont
 ```
 
 > Npcap لازم است. اسکریپت در صورت نبود آن، دانلود خودکار پیشنهاد می‌دهد.
+
+### اوپن‌دبلیوآرتی (OpenWrt)
+
+از طریق SSH به روتر وصل شوید و اجرا کنید:
+
+```sh
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
+```
+
+> بعد از نصب اولیه، با دستور `paqx` مدیریت کنید.
 
 ## حالت‌های پروتکل
 
