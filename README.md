@@ -12,19 +12,31 @@
 
 Deploy and manage **[Paqet](https://github.com/hanselime/paqet)** tunnels across **Linux servers**, **Linux/OpenWrt clients**, and **Windows** — from a single toolset.
 
-## Quick Start
+---
 
-### 🐧 Linux Server / Linux Client / OpenWrt Router
+## 🖥️ Server (Linux)
 
 ```bash
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx install
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx
 ```
 
-The installer auto-detects your OS and presents the appropriate role (Server or Client).
+Select **Server** on first run. The installer auto-configures firewall, kernel optimizations, and service.
 
-### 🪟 Windows Client
+---
 
-Open **PowerShell as Administrator** in any folder and run:
+## 📱 Client
+
+### 🐧 Linux
+
+```bash
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx
+```
+
+Select **Client** on first run. Requires server IP:Port and encryption key.
+
+### 🪟 Windows
+
+Open **PowerShell as Administrator** and run:
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
@@ -32,7 +44,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercont
 
 > **Note:** [Npcap](https://npcap.com/#download) is required. The script will detect if it's missing and offer to download it automatically.
 
-### 📡 OpenWrt Client
+### 📡 OpenWrt
 
 SSH into your router and run:
 
@@ -40,23 +52,23 @@ SSH into your router and run:
 curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
 ```
 
-After first setup, use `paqx` command to manage.
+> After first setup, use `paqx` command to manage.
 
 ---
 
 ## Features
 
-### Server (Linux)
+### Server
 
 | Feature | Description |
 |---------|-------------|
 | **Protocol Modes** | `Simple` (key only) · `Automatic` (tuned to CPU/RAM) · `Manual` (14 params) |
-| **Kernel Optimization** | BBR, TCP Fast Open, socket buffers via `/etc/sysctl.d/99-paqx.conf` (safe, isolated) |
-| **Firewall Anti-Probing** | `NOTRACK` + `RST DROP` rules, tagged with `--comment "paqx"` — zero impact on Docker/Traefik/Nginx |
+| **Kernel Optimization** | BBR, TCP Fast Open, socket buffers via `/etc/sysctl.d/99-paqx.conf` |
+| **Firewall Anti-Probing** | `NOTRACK` + `RST DROP` rules, tagged with `--comment "paqx"` |
 | **IPv4 + IPv6** | Full dual-stack firewall support |
 | **Auto-Detection** | Local IP, interface, gateway MAC |
 
-### Client (Linux / OpenWrt / Windows)
+### Client (All Platforms)
 
 | Feature | Description |
 |---------|-------------|
@@ -64,29 +76,29 @@ After first setup, use `paqx` command to manage.
 | **SOCKS5 Proxy** | Configurable local port (default `1080`) |
 | **Service Management** | `systemd` (Linux) · `procd` (OpenWrt) · Scheduled Task (Windows) |
 | **Protocol Modes** | `Simple` (key only) · `Automatic` (optimized defaults) |
-| **Portable (Windows)** | Runs from any folder — binary + config stored locally |
+| **Refresh Network** | Switch between adapters without reinstalling |
 
 ### Management Panel
 
-After installation, run `paqx` (Linux/OpenWrt) or the PowerShell script (Windows) to access:
+All platforms share the same panel interface:
 
 ```
-╔═══════════════════════════════╗
-║       PaqX Server Panel       ║
-╚═══════════════════════════════╝
+ 1) Status           6) Settings
+ 2) Log              7) Update Core
+ 3) Start/Stop       8) Downgrade Core
+ 4) Restart          9) Uninstall
+ 5) Disable/Enable   0) Exit
+```
 
-┌──────────────────────────────────────────────┐
-│ Status:   ● Running                          │
-│ Auto:     Enabled                             │
-├──────────────────────────────────────────────┤
-│ Address:  213.x.x.x:8443                    │
-│ Key:      tkXAy3Kkzc9g4aQKNX8jzLJfOkBgYEDs  │
-└──────────────────────────────────────────────┘
+Settings menu:
 
- 1) Status       5) Disable/Enable
- 2) Log          6) Settings
- 3) Start/Stop   7) Update Core
- 4) Restart      8) Uninstall
+```
+ 1) Change Server (IP:Port & Key)
+ 2) Change Local SOCKS5 Port
+ 3) Change Protocol Mode
+ 4) View Server Info
+ 5) Refresh Network
+ 0) Back
 ```
 
 ---
@@ -95,18 +107,20 @@ After installation, run `paqx` (Linux/OpenWrt) or the PowerShell script (Windows
 
 ```
 paqx/
-├── paqx                    # Main entry point (bash)
+├── paqx                     # Linux entry point (Server & Client)
 ├── lib/
-│   ├── core.sh             # Constants, colors, shared helpers
-│   ├── utils.sh            # Logging, arch detection, download
-│   ├── network.sh          # IP/interface/gateway detection
-│   └── crypto.sh           # Key generation
+│   ├── core.sh              # Constants, colors, shared helpers
+│   ├── utils.sh             # Logging, arch detection, download
+│   ├── network.sh           # IP/interface/gateway detection
+│   └── crypto.sh            # Key generation
 ├── modules/
-│   ├── server.sh           # Server install, config, firewall, uninstall
-│   ├── client.sh           # Linux client
-│   └── client_openwrt.sh   # OpenWrt client
-└── windows/
-    └── setup.ps1           # Windows client (PowerShell)
+│   ├── server.sh            # Server install, config, firewall
+│   ├── client.sh            # Linux client
+│   └── client_openwrt.sh    # OpenWrt client (modular)
+├── windows/
+│   └── setup.ps1            # Windows client (standalone)
+└── openwrt/
+    └── setup.sh             # OpenWrt client (standalone)
 ```
 
 ---
@@ -122,26 +136,36 @@ paqx/
 
 ## Uninstall
 
-### Linux / OpenWrt
+### Linux
 
-Select **Uninstall** from the panel menu, or remove manually:
+Select **Uninstall** from the panel, or manually:
 
 ```bash
 systemctl stop paqx && systemctl disable paqx
-rm -f /etc/systemd/system/paqx.service
-rm -f /etc/sysctl.d/99-paqx.conf
+rm -f /etc/systemd/system/paqx.service /etc/sysctl.d/99-paqx.conf
 rm -rf /etc/paqx /usr/local/paqx /usr/bin/paqx /usr/bin/paqet
 sysctl --system
 ```
 
 ### Windows
 
-Select **Uninstall** from the PowerShell panel, or remove manually:
+Select **Uninstall** from the panel, or manually:
 
 ```powershell
 Stop-ScheduledTask -TaskName "PaqX_Client"
 Unregister-ScheduledTask -TaskName "PaqX_Client" -Confirm:$false
 Remove-Item paqet.exe, config.yaml -Force
+```
+
+### OpenWrt
+
+Select **Uninstall** from the panel, or manually:
+
+```sh
+/etc/init.d/paqet stop && /etc/init.d/paqet disable
+rm -f /etc/init.d/paqet /usr/bin/paqet /usr/bin/paqx
+rm -rf /etc/paqet
+nft delete table inet paqet_rules 2>/dev/null
 ```
 
 ---
@@ -150,19 +174,27 @@ Remove-Item paqet.exe, config.yaml -Force
 
 **PaqX — ابزار مدیریت هوشمند تونل [Paqet](https://github.com/hanselime/paqet)**
 
-## نصب سریع
-
-### سرور لینوکس / کلاینت لینوکس / روتر OpenWrt
+## 🖥️ سرور (لینوکس)
 
 ```bash
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx install
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx
 ```
 
-اسکریپت به صورت خودکار سیستم‌عامل را تشخیص داده و نقش مناسب (سرور/کلاینت) را پیشنهاد می‌دهد.
+> در اولین اجرا **سرور** را انتخاب کنید.
 
-### ویندوز
+## 📱 کلاینت
 
-پاورشل را **به عنوان ادمین** باز کنید و در هر فولدری اجرا کنید:
+### 🐧 لینوکس
+
+```bash
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx
+```
+
+> در اولین اجرا **کلاینت** را انتخاب کنید. آدرس سرور و کلید رمزنگاری لازم است.
+
+### 🪟 ویندوز
+
+پاورشل را **به عنوان ادمین** باز کنید:
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
@@ -170,9 +202,9 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercont
 
 > Npcap لازم است. اسکریپت در صورت نبود آن، دانلود خودکار پیشنهاد می‌دهد.
 
-### اوپن‌دبلیوآرتی (OpenWrt)
+### 📡 اوپن‌دبلیوآرتی (OpenWrt)
 
-از طریق SSH به روتر وصل شوید و اجرا کنید:
+از طریق SSH به روتر وصل شوید:
 
 ```sh
 curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
@@ -184,7 +216,7 @@ curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/openwrt/setup.s
 
 | حالت | توضیح |
 |------|-------|
-| **Simple** | فقط `mode: fast` و `key` — بدون تنظیمات اضافی (مشابه paqctl) |
+| **Simple** | فقط `mode: fast` و `key` — بدون تنظیمات اضافی |
 | **Automatic** | بهینه‌سازی خودکار بر اساس RAM و CPU سرور |
 | **Manual** | تنظیم دستی ۱۴ پارامتر پروتکل KCP |
 

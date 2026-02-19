@@ -1,1 +1,4 @@
 openwrt/*.sh text eol=lf
+lib/*.sh text eol=lf
+modules/*.sh text eol=lf
+paqx text eol=lf
