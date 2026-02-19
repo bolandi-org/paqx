@@ -27,7 +27,7 @@ The installer auto-detects your OS and presents the appropriate role (Server or 
 Open **PowerShell as Administrator** in any folder and run:
 
 ```powershell
-irm https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 -OutFile paqx.ps1; .\paqx.ps1
+iwr https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
 ```
 
 > **Note:** [Npcap](https://npcap.com/#download) is required. The script will detect if it's missing and offer to download it automatically.
@@ -155,7 +155,7 @@ curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/b
 پاورشل را **به عنوان ادمین** باز کنید و در هر فولدری اجرا کنید:
 
 ```powershell
-irm https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 -OutFile paqx.ps1; .\paqx.ps1
+iwr https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
 ```
 
 > Npcap لازم است. اسکریپت در صورت نبود آن، دانلود خودکار پیشنهاد می‌دهد.

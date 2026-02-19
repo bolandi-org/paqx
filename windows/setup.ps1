@@ -7,18 +7,18 @@
     Requires: PowerShell (Admin) + Npcap installed.
 #>
 
-# ── Constants ──────────────────────────────────────────────
-$ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Definition
+# -- Constants ----------------------------------------------------------
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 if (-not $ScriptDir) { $ScriptDir = Get-Location }
-$BinaryName  = "paqet.exe"
-$BinaryPath  = Join-Path $ScriptDir $BinaryName
-$ConfigPath  = Join-Path $ScriptDir "config.yaml"
-$TaskName    = "PaqX_Client"
-$RepoOwner   = "hanselime"
-$RepoName    = "paqet"
-$NpcapUrl    = "https://npcap.com/dist/npcap-1.80.exe"
+$BinaryName = "paqet.exe"
+$BinaryPath = Join-Path $ScriptDir $BinaryName
+$ConfigPath = Join-Path $ScriptDir "config.yaml"
+$TaskName = "PaqX_Client"
+$RepoOwner = "hanselime"
+$RepoName = "paqet"
+$NpcapUrl = "https://npcap.com/dist/npcap-1.80.exe"
 
-# ── Colors ─────────────────────────────────────────────────
+# -- Colors -------------------------------------------------------------
 function Write-C { param([string]$T, [string]$C = "White") Write-Host $T -ForegroundColor $C -NoNewline }
 function Write-CL { param([string]$T, [string]$C = "White") Write-Host $T -ForegroundColor $C }
 function Write-OK { param([string]$T) Write-CL "[+] $T" "Green" }
@@ -26,14 +26,14 @@ function Write-Warn { param([string]$T) Write-CL "[!] $T" "Yellow" }
 function Write-Err { param([string]$T) Write-CL "[-] $T" "Red" }
 function Write-Info { param([string]$T) Write-CL "[*] $T" "Cyan" }
 
-# ── Admin Check ────────────────────────────────────────────
+# -- Admin Check --------------------------------------------------------
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
     Write-Err "Please run PowerShell as Administrator!"
     Start-Sleep -Seconds 3
     Exit 1
 }
 
-# ── Npcap ──────────────────────────────────────────────────
+# -- Npcap --------------------------------------------------------------
 function Test-Npcap {
     if (Test-Path "C:\Windows\System32\Npcap" -PathType Container) { return $true }
     return $false
@@ -58,24 +58,26 @@ function Install-Npcap {
         Start-Process -FilePath $npcapPath -Wait
         if (Test-Npcap) {
             Write-OK "Npcap installed successfully."
-        } else {
+        }
+        else {
             Write-Err "Npcap still not detected. Please install manually."
             Exit 1
         }
-    } catch {
+    }
+    catch {
         Write-Err "Failed to download Npcap: $_"
         Write-Warn "Install manually from: https://npcap.com/#download"
         Exit 1
     }
 }
 
-# ── Binary Download ────────────────────────────────────────
+# -- Binary Download ----------------------------------------------------
 function Get-PaqetBinary {
     Write-Info "Fetching latest release from GitHub..."
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $apiUrl = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
-        $release = Invoke-RestMethod -Uri $apiUrl -Headers @{"User-Agent"="PaqX"} -UseBasicParsing
+        $release = Invoke-RestMethod -Uri $apiUrl -Headers @{"User-Agent" = "PaqX" } -UseBasicParsing
 
         $asset = $release.assets | Where-Object { $_.name -match "windows.*amd64.*\.zip$" } | Select-Object -First 1
         if (-not $asset) {
@@ -96,13 +98,15 @@ function Get-PaqetBinary {
         if ($exe) {
             Copy-Item -Path $exe.FullName -Destination $BinaryPath -Force
             Write-OK "Binary installed: $BinaryPath"
-        } else {
+        }
+        else {
             # Might be named differently
             $exe = Get-ChildItem -Path $extractDir -Recurse -Filter "*.exe" | Select-Object -First 1
             if ($exe) {
                 Copy-Item -Path $exe.FullName -Destination $BinaryPath -Force
                 Write-OK "Binary installed: $BinaryPath"
-            } else {
+            }
+            else {
                 Write-Err "No .exe found in archive."
                 return $false
             }
@@ -111,13 +115,14 @@ function Get-PaqetBinary {
         Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
         Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
         return $true
-    } catch {
+    }
+    catch {
         Write-Err "Download failed: $_"
         return $false
     }
 }
 
-# ── Network Detection ──────────────────────────────────────
+# -- Network Detection --------------------------------------------------
 function Get-NetworkInfo {
     $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -notmatch 'Loopback|Virtual|Hyper-V|WSL|Docker|vEthernet' } | Select-Object -First 1
     if (-not $adapter) {
@@ -148,7 +153,7 @@ function Get-NetworkInfo {
     }
 }
 
-# ── Install ────────────────────────────────────────────────
+# -- Install ------------------------------------------------------------
 function Install-PaqXClient {
     # 1. Npcap check
     if (-not (Test-Npcap)) { Install-Npcap }
@@ -162,9 +167,9 @@ function Install-PaqXClient {
     # 3. Client config
     Write-CL ""
     Write-CL "--- Client Configuration ---" "Yellow"
-    $serverIP   = Read-Host "  Server IP"
+    $serverIP = Read-Host "  Server IP"
     $serverPort = Read-Host "  Server Port"
-    $key        = Read-Host "  Encryption Key"
+    $key = Read-Host "  Encryption Key"
 
     Write-CL ""
     Write-CL "  1) Simple (Fast mode, key only - recommended)" "White"
@@ -222,7 +227,8 @@ transport:
     dshard: 10
     pshard: 3
 "@
-    } else {
+    }
+    else {
         # Simple mode
         $configContent = @"
 role: "client"
@@ -255,10 +261,10 @@ transport:
 
     # 6. Create Scheduled Task
     Write-Info "Creating startup task..."
-    $action    = New-ScheduledTaskAction -Execute $BinaryPath -Argument "run -c `"$ConfigPath`"" -WorkingDirectory $ScriptDir
-    $trigger   = New-ScheduledTaskTrigger -AtLogon
+    $action = New-ScheduledTaskAction -Execute $BinaryPath -Argument "run -c `"$ConfigPath`"" -WorkingDirectory $ScriptDir
+    $trigger = New-ScheduledTaskTrigger -AtLogon
     $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-    $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 
     Start-ScheduledTask -TaskName $TaskName
@@ -272,12 +278,12 @@ transport:
     Read-Host "Press Enter to continue"
 }
 
-# ── Dashboard ──────────────────────────────────────────────
+# -- Dashboard ----------------------------------------------------------
 function Show-Dashboard {
     while ($true) {
         # Re-read config each loop
-        $srvAddr  = ""
-        $srvKey   = ""
+        $srvAddr = ""
+        $srvKey = ""
         $socksPort = ""
         if (Test-Path $ConfigPath) {
             $lines = Get-Content $ConfigPath
@@ -363,7 +369,8 @@ function Show-Dashboard {
                 $proc = Get-Process -Name "paqet" -ErrorAction SilentlyContinue
                 if ($proc) {
                     Write-OK "paqet process running (PID: $($proc.Id))"
-                } else {
+                }
+                else {
                     Write-Warn "paqet process not found."
                 }
                 Write-CL ""
@@ -389,7 +396,7 @@ function Show-Dashboard {
     }
 }
 
-# ── Settings ───────────────────────────────────────────────
+# -- Settings -----------------------------------------------------------
 function Show-Settings {
     while ($true) {
         Write-CL ""
@@ -402,9 +409,9 @@ function Show-Settings {
 
         switch ($s) {
             "1" {
-                $newIP   = Read-Host "  New Server IP"
+                $newIP = Read-Host "  New Server IP"
                 $newPort = Read-Host "  New Server Port"
-                $newKey  = Read-Host "  New Encryption Key"
+                $newKey = Read-Host "  New Encryption Key"
 
                 $content = Get-Content $ConfigPath -Raw
                 $content = $content -replace '(server:\s*\n\s*addr:\s*)"[^"]*"', "`$1`"${newIP}:${newPort}`""
@@ -463,7 +470,8 @@ transport:
     dshard: 10
     pshard: 3
 "@
-                } else {
+                }
+                else {
                     $transport = @"
 transport:
   protocol: "kcp"
@@ -493,7 +501,7 @@ function Restart-PaqXTask {
     Start-Sleep -Seconds 1
 }
 
-# ── Uninstall ──────────────────────────────────────────────
+# -- Uninstall ----------------------------------------------------------
 function Uninstall-PaqX {
     Write-CL ""
     Write-Err "WARNING: This will COMPLETELY remove PaqX Client."
@@ -523,11 +531,12 @@ function Uninstall-PaqX {
     Exit
 }
 
-# ── Entry Point ────────────────────────────────────────────
+# -- Entry Point --------------------------------------------------------
 Write-CL ""
 if (Test-Path $ConfigPath) {
     Show-Dashboard
-} else {
+}
+else {
     Clear-Host
     Write-CL ""
     Write-CL "  +===============================+" "Blue"
@@ -541,7 +550,8 @@ if (Test-Path $ConfigPath) {
     if ($choice -eq "1") {
         Install-PaqXClient
         Show-Dashboard
-    } else {
+    }
+    else {
         Exit
     }
 }
