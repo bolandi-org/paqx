@@ -279,7 +279,8 @@ transport:
 "@
     }
 
-    Set-Content -Path $ConfigPath -Value $configContent -Encoding UTF8
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($ConfigPath, $configContent, $utf8NoBom)
     Write-OK "Config saved: $ConfigPath"
 
     # 6. Create Scheduled Task
@@ -438,7 +439,8 @@ function Show-Settings {
                 $content = Get-Content $ConfigPath -Raw
                 $content = $content -replace '(server:\s*\n\s*addr:\s*)"[^"]*"', "`$1`"$newAddr`""
                 $content = $content -replace '(key:\s*)"[^"]*"', "`$1`"$newKey`""
-                Set-Content -Path $ConfigPath -Value $content -Encoding UTF8
+                $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+                [System.IO.File]::WriteAllText($ConfigPath, $content, $utf8NoBom)
 
                 Write-OK "Server config updated."
                 Restart-PaqXTask
@@ -449,7 +451,8 @@ function Show-Settings {
 
                 $content = Get-Content $ConfigPath -Raw
                 $content = $content -replace '(listen:\s*)"[^"]*"', "`$1`"127.0.0.1:$newLocal`""
-                Set-Content -Path $ConfigPath -Value $content -Encoding UTF8
+                $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+                [System.IO.File]::WriteAllText($ConfigPath, $content, $utf8NoBom)
 
                 Write-OK "Local port changed to $newLocal."
                 Restart-PaqXTask
@@ -506,7 +509,8 @@ transport:
 "@
                 }
 
-                Set-Content -Path $ConfigPath -Value ($head + $transport) -Encoding UTF8
+                $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+                [System.IO.File]::WriteAllText($ConfigPath, ($head + $transport), $utf8NoBom)
                 Write-OK "Protocol mode updated."
                 Restart-PaqXTask
             }
