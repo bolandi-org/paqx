@@ -129,16 +129,21 @@ function Get-NetworkInfo {
         $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
     }
 
+    # Local IP
+    $localIP = ""
+    $ipObj = Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($ipObj) { $localIP = $ipObj.IPAddress }
+
     $gwRoute = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue | Select-Object -First 1
     $gwIP = if ($gwRoute) { $gwRoute.NextHop } else { "" }
 
-    # Gateway MAC via ARP
+    # Gateway MAC via ARP (keep dash format)
     $gwMAC = ""
     if ($gwIP) {
         $arpOutput = arp -a $gwIP 2>$null
         $match = $arpOutput | Select-String "([0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2})"
         if ($match) {
-            $gwMAC = ($match.Matches[0].Value) -replace '-', ':'
+            $gwMAC = $match.Matches[0].Value
         }
     }
 
@@ -148,6 +153,7 @@ function Get-NetworkInfo {
     return @{
         AdapterName = $adapter.Name
         GUID        = $npcapGuid
+        LocalIP     = $localIP
         GatewayIP   = $gwIP
         GatewayMAC  = $gwMAC
     }
@@ -183,6 +189,7 @@ function Install-PaqXClient {
     Write-Info "Detecting network..."
     $net = Get-NetworkInfo
     Write-OK "Adapter: $($net.AdapterName)"
+    Write-OK "Local IP: $($net.LocalIP)"
     Write-OK "Gateway MAC: $($net.GatewayMAC)"
 
     # 5. Generate config
@@ -195,21 +202,29 @@ log:
 
 socks5:
   - listen: "127.0.0.1:$localPort"
+    username: ""
+    password: ""
 
 network:
-  guid: "$($net.GUID)"
+  interface: "$($net.AdapterName)"
+  guid: '$($net.GUID)'
   ipv4:
-    addr: "0.0.0.0:0"
+    addr: "$($net.LocalIP):0"
     router_mac: "$($net.GatewayMAC)"
+
+  tcp:
+    local_flag: ["PA"]
+    remote_flag: ["PA"]
 
 server:
   addr: "${serverAddr}"
 
 transport:
   protocol: "kcp"
+  conn: 1
+
   kcp:
     mode: "fast"
-    conn: 1
     nodelay: 1
     interval: 10
     resend: 2
@@ -237,18 +252,27 @@ log:
 
 socks5:
   - listen: "127.0.0.1:$localPort"
+    username: ""
+    password: ""
 
 network:
-  guid: "$($net.GUID)"
+  interface: "$($net.AdapterName)"
+  guid: '$($net.GUID)'
   ipv4:
-    addr: "0.0.0.0:0"
+    addr: "$($net.LocalIP):0"
     router_mac: "$($net.GatewayMAC)"
+
+  tcp:
+    local_flag: ["PA"]
+    remote_flag: ["PA"]
 
 server:
   addr: "${serverAddr}"
 
 transport:
   protocol: "kcp"
+  conn: 1
+
   kcp:
     mode: "fast"
     key: "$key"
@@ -449,9 +473,10 @@ function Show-Settings {
                     $transport = @"
 transport:
   protocol: "kcp"
+  conn: 1
+
   kcp:
     mode: "fast"
-    conn: 1
     nodelay: 1
     interval: 10
     resend: 2
@@ -473,6 +498,8 @@ transport:
                     $transport = @"
 transport:
   protocol: "kcp"
+  conn: 1
+
   kcp:
     mode: "fast"
     key: "$curKey"
