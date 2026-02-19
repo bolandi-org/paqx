@@ -13,8 +13,8 @@ CONF_FILE="$CONF_DIR/config.yaml"
 SERVICE_FILE_LINUX="/etc/systemd/system/paqx.service"
 SERVICE_FILE_OPENWRT="/etc/init.d/paqx"
 BINARY_PATH="$INSTALL_DIR/paqet"
-REPO_OWNER="hanselime"
-REPO_NAME="paqet"
+REPO_OWNER="bolandi-org"
+REPO_NAME="paqx"
 VERSION="3.0.0"
 
 # --- Colors ---
