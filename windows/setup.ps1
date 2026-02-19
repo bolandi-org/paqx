@@ -298,9 +298,9 @@ function Show-Dashboard {
 
         Clear-Host
         Write-CL ""
-        Write-CL "  ╔═══════════════════════════════╗" "Blue"
-        Write-CL "  ║      PaqX Client  (Windows)   ║" "Blue"
-        Write-CL "  ╚═══════════════════════════════╝" "Blue"
+        Write-CL "  +===============================+" "Blue"
+        Write-CL "  |      PaqX Client  (Windows)   |" "Blue"
+        Write-CL "  +===============================+" "Blue"
         Write-CL ""
 
         # Info card
@@ -312,16 +312,16 @@ function Show-Dashboard {
         $maxLen = @($srvAddr.Length, $srvKey.Length, $socksPort.Length, 12) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
         $cardW = $maxLen + 16
         if ($cardW -lt 42) { $cardW = 42 }
-        $border = "─" * $cardW
+        $border = "-" * $cardW
 
-        Write-CL "  ┌$border┐" "Cyan"
-        Write-C  "  │ " "Cyan"; Write-C "Status:  " "White"; Write-C "$statusText" $statusColor; Write-C (" " * ($cardW - $statusText.Length - 11)); Write-CL "│" "Cyan"
-        Write-C  "  │ " "Cyan"; Write-C "Auto:    " "White"; Write-C "$autoText" $autoColor; Write-C (" " * ($cardW - $autoText.Length - 11)); Write-CL "│" "Cyan"
-        Write-CL "  ├$border┤" "Cyan"
-        Write-C  "  │ " "Cyan"; Write-C "Server:  " "White"; Write-C "$srvAddr" "Yellow"; Write-C (" " * ($cardW - $srvAddr.Length - 11)); Write-CL "│" "Cyan"
-        Write-C  "  │ " "Cyan"; Write-C "Key:     " "White"; Write-C "$srvKey" "Yellow"; Write-C (" " * ($cardW - $srvKey.Length - 11)); Write-CL "│" "Cyan"
-        Write-C  "  │ " "Cyan"; Write-C "SOCKS5:  " "White"; Write-C "$socksPort" "Yellow"; Write-C (" " * ($cardW - $socksPort.Length - 11)); Write-CL "│" "Cyan"
-        Write-CL "  └$border┘" "Cyan"
+        Write-CL "  +$border+" "Cyan"
+        Write-C  "  | " "Cyan"; Write-C "Status:  " "White"; Write-C "$statusText" $statusColor; Write-C (" " * ($cardW - $statusText.Length - 11)); Write-CL "|" "Cyan"
+        Write-C  "  | " "Cyan"; Write-C "Auto:    " "White"; Write-C "$autoText" $autoColor; Write-C (" " * ($cardW - $autoText.Length - 11)); Write-CL "|" "Cyan"
+        Write-CL "  +$border+" "Cyan"
+        Write-C  "  | " "Cyan"; Write-C "Server:  " "White"; Write-C "$srvAddr" "Yellow"; Write-C (" " * ($cardW - $srvAddr.Length - 11)); Write-CL "|" "Cyan"
+        Write-C  "  | " "Cyan"; Write-C "Key:     " "White"; Write-C "$srvKey" "Yellow"; Write-C (" " * ($cardW - $srvKey.Length - 11)); Write-CL "|" "Cyan"
+        Write-C  "  | " "Cyan"; Write-C "SOCKS5:  " "White"; Write-C "$socksPort" "Yellow"; Write-C (" " * ($cardW - $socksPort.Length - 11)); Write-CL "|" "Cyan"
+        Write-CL "  +$border+" "Cyan"
 
         Write-CL ""
         Write-CL "   1) Start"
@@ -530,9 +530,9 @@ if (Test-Path $ConfigPath) {
 } else {
     Clear-Host
     Write-CL ""
-    Write-CL "  ╔═══════════════════════════════╗" "Blue"
-    Write-CL "  ║    PaqX Client  (Windows)     ║" "Blue"
-    Write-CL "  ╚═══════════════════════════════╝" "Blue"
+    Write-CL "  +===============================+" "Blue"
+    Write-CL "  |    PaqX Client  (Windows)     |" "Blue"
+    Write-CL "  +===============================+" "Blue"
     Write-CL ""
     Write-CL "  1) Install Client" "White"
     Write-CL "  0) Exit" "White"
