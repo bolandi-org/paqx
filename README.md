@@ -1,96 +1,179 @@
-# PaqX - Universal Paqet Manager
-
-[![Platform](https://img.shields.io/badge/Platform-Linux%20|%20OpenWrt%20|%20Windows-blue)]()
-[![License](https://img.shields.io/badge/License-MIT-orange)]()
-
-**The ultimate all-in-one management tool for deploying [Paqet](https://github.com/hanselime/paqet) tunnels.**  
-Supports **Linux Servers**, **Linux Clients**, **OpenWrt Routers**, and **Windows**.
+<p align="center">
+  <h1 align="center">PaqX</h1>
+  <p align="center"><strong>Universal Paqet Tunnel Manager</strong></p>
+  <p align="center">
+    <a href="#"><img src="https://img.shields.io/badge/Platform-Linux%20|%20OpenWrt%20|%20Windows-0078D4?style=flat-square" alt="Platform"></a>
+    <a href="#"><img src="https://img.shields.io/badge/License-MIT-orange?style=flat-square" alt="License"></a>
+    <a href="https://github.com/hanselime/paqet"><img src="https://img.shields.io/badge/Core-Paqet-blueviolet?style=flat-square" alt="Core"></a>
+  </p>
+</p>
 
 ---
 
-## 🚀 Installation & Usage
+Deploy and manage **[Paqet](https://github.com/hanselime/paqet)** tunnels across **Linux servers**, **Linux/OpenWrt clients**, and **Windows** — from a single toolset.
 
-### 🐧 Linux (Server & Client) / OpenWrt
+## Quick Start
 
-Run the following command on your **Server**, **Linux Desktop**, or **OpenWrt Router**:
+### 🐧 Linux Server / Linux Client / OpenWrt Router
 
 ```bash
 curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx install
 ```
 
-* **Server Mode:** Intelligent optimization for CPU/RAM, Auto-Firewall configuration (Bypassing GFW active probing).
-* **Client Mode:** Auto-detects Gateway MAC, sets up systemd/procd service.
+The installer auto-detects your OS and presents the appropriate role (Server or Client).
 
-### 🪟 Windows
+### 🪟 Windows Client
 
-1. Download and install [Npcap](https://npcap.com/#download) (Check "Install in WinPcap API-compatible Mode").
-2. Open **PowerShell** as Administrator.
-3. Run the installer:
-
-    ```powershell
-    irm https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 | iex
-    ```
-
----
-
-## 🛠 Features
-
-* **Intelligent Server Optimization**:
-  * Auto-tunes `sysctl` kernel parameters (BBR, Fast Open, File/Socket limits).
-  * Dynamic buffer calculation (SndWnd/RcvWnd) based on available RAM.
-* **Firewall Bypass**:
-  * Automatically applies `iptables` rules to set `NOTRACK` and DROP `RST` packets, preventing connection resets.
-* **Multi-Platform**:
-  * **OpenWrt**: Uses `procd` and lightweight dependencies (`opkg`).
-  * **Linux**: Uses `systemd` and standard package managers (`apt`, `yum`, `dnf`).
-  * **Windows**: Native PowerShell setup with `Scheduled Task` persistence.
-* **Plug & Play**: Auto-detects Architecture (amd64, arm64, mips, etc.) and Network Interface/Gateway.
-
----
-
-# 🇮🇷 راهنمای فارسی (Persian Documentation)
-
-**پک‌اِکس (PaqX) - ابزار مدیریت هوشمند تونل Paqet برای سرور و کلاینت**
-
----
-
-## 🚀 نصب و راه‌اندازی
-
-### 🐧 سرور لینوکس / کلاینت لینوکس / روتر OpenWrt
-
-دستور زیر را در ترمینال اجرا کنید. اسکریپت به صورت خودکار سیستم عامل را تشخیص داده و گزینه‌های مناسب (سرور/کلاینت) را نمایش می‌دهد:
-
-```bash
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx install
-```
-
-* **سمت سرور (Server):**
-  * بهینه‌سازی خودکار هسته لینوکس (BBR, TCP Tuning).
-  * تنظیم فایرفال برای جلوگیری از شناسایی (IPtables NOTRACK).
-  * محاسبه بهترین کانفیگ بر اساس میزان رم و قدرت پردازنده سرور.
-* **سمت کلاینت (OpenWrt/Linux):**
-  * شناسایی خودکار گت‌وی (Gateway) و مک آدرس.
-  * نصب سرویس پایدار (Systemd/Procd).
-
-### 🪟 ویندوز
-
-۱. ابتدا برنامه [Npcap](https://npcap.com/#download) را دانلود و نصب کنید (تیک گزینه WinPcap Compatible را بزنید).
-۲. پاورشل (PowerShell) را به صورت **Run as Administrator** باز کنید.
-۳. دستور زیر را اجرا کنید:
+Open **PowerShell as Administrator** in any folder and run:
 
 ```powershell
-irm https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 | iex
+irm https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 -OutFile paqx.ps1; .\paqx.ps1
+```
+
+> **Note:** [Npcap](https://npcap.com/#download) is required. The script will detect if it's missing and offer to download it automatically.
+
+---
+
+## Features
+
+### Server (Linux)
+
+| Feature | Description |
+|---------|-------------|
+| **Protocol Modes** | `Simple` (key only) · `Automatic` (tuned to CPU/RAM) · `Manual` (14 params) |
+| **Kernel Optimization** | BBR, TCP Fast Open, socket buffers via `/etc/sysctl.d/99-paqx.conf` (safe, isolated) |
+| **Firewall Anti-Probing** | `NOTRACK` + `RST DROP` rules, tagged with `--comment "paqx"` — zero impact on Docker/Traefik/Nginx |
+| **IPv4 + IPv6** | Full dual-stack firewall support |
+| **Auto-Detection** | Local IP, interface, gateway MAC |
+
+### Client (Linux / OpenWrt / Windows)
+
+| Feature | Description |
+|---------|-------------|
+| **Plug & Play** | Auto-detects network adapter, gateway MAC, and generates config |
+| **SOCKS5 Proxy** | Configurable local port (default `1080`) |
+| **Service Management** | `systemd` (Linux) · `procd` (OpenWrt) · Scheduled Task (Windows) |
+| **Protocol Modes** | `Simple` (key only) · `Automatic` (optimized defaults) |
+| **Portable (Windows)** | Runs from any folder — binary + config stored locally |
+
+### Management Panel
+
+After installation, run `paqx` (Linux/OpenWrt) or the PowerShell script (Windows) to access:
+
+```
+╔═══════════════════════════════╗
+║       PaqX Server Panel       ║
+╚═══════════════════════════════╝
+
+┌──────────────────────────────────────────────┐
+│ Status:   ● Running                          │
+│ Auto:     Enabled                             │
+├──────────────────────────────────────────────┤
+│ Address:  213.x.x.x:8443                    │
+│ Key:      tkXAy3Kkzc9g4aQKNX8jzLJfOkBgYEDs  │
+└──────────────────────────────────────────────┘
+
+ 1) Status       5) Disable/Enable
+ 2) Log          6) Settings
+ 3) Start/Stop   7) Update Core
+ 4) Restart      8) Uninstall
 ```
 
 ---
 
-## منوی مدیریت (Management Menu)
+## Architecture
 
-پس از نصب، با تایپ دستور `paqx` (در لینوکس) یا اجرای مجدد اسکریپت (در ویندوز) به پنل مدیریت دسترسی خواهید داشت:
-
-* **Start/Stop:** مدیریت سرویس.
-* **Uninstall:** حذف کامل برنامه و تنظیمات.
-* **Logs:** مشاهده وضعیت اتصال و خطاها.
+```
+paqx/
+├── paqx                    # Main entry point (bash)
+├── lib/
+│   ├── core.sh             # Constants, colors, shared helpers
+│   ├── utils.sh            # Logging, arch detection, download
+│   ├── network.sh          # IP/interface/gateway detection
+│   └── crypto.sh           # Key generation
+├── modules/
+│   ├── server.sh           # Server install, config, firewall, uninstall
+│   ├── client.sh           # Linux client
+│   └── client_openwrt.sh   # OpenWrt client
+└── windows/
+    └── setup.ps1           # Windows client (PowerShell)
+```
 
 ---
-**Developed by Bolandi-Org**
+
+## Security
+
+- **Firewall rules** are tagged with `--comment "paqx"` — only PaqX rules are touched during uninstall
+- **Kernel params** use a separate `/etc/sysctl.d/99-paqx.conf` file — `/etc/sysctl.conf` is never modified
+- **Config files** are stored with `600` permissions
+- **Encryption keys** are generated via `openssl rand -base64 24`
+
+---
+
+## Uninstall
+
+### Linux / OpenWrt
+
+Select **Uninstall** from the panel menu, or remove manually:
+
+```bash
+systemctl stop paqx && systemctl disable paqx
+rm -f /etc/systemd/system/paqx.service
+rm -f /etc/sysctl.d/99-paqx.conf
+rm -rf /etc/paqx /usr/local/paqx /usr/bin/paqx /usr/bin/paqet
+sysctl --system
+```
+
+### Windows
+
+Select **Uninstall** from the PowerShell panel, or remove manually:
+
+```powershell
+Stop-ScheduledTask -TaskName "PaqX_Client"
+Unregister-ScheduledTask -TaskName "PaqX_Client" -Confirm:$false
+Remove-Item paqet.exe, config.yaml -Force
+```
+
+---
+
+# 🇮🇷 راهنمای فارسی
+
+**PaqX — ابزار مدیریت هوشمند تونل [Paqet](https://github.com/hanselime/paqet)**
+
+## نصب سریع
+
+### سرور لینوکس / کلاینت لینوکس / روتر OpenWrt
+
+```bash
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx install
+```
+
+اسکریپت به صورت خودکار سیستم‌عامل را تشخیص داده و نقش مناسب (سرور/کلاینت) را پیشنهاد می‌دهد.
+
+### ویندوز
+
+پاورشل را **به عنوان ادمین** باز کنید و در هر فولدری اجرا کنید:
+
+```powershell
+irm https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 -OutFile paqx.ps1; .\paqx.ps1
+```
+
+> Npcap لازم است. اسکریپت در صورت نبود آن، دانلود خودکار پیشنهاد می‌دهد.
+
+## حالت‌های پروتکل
+
+| حالت | توضیح |
+|------|-------|
+| **Simple** | فقط `mode: fast` و `key` — بدون تنظیمات اضافی (مشابه paqctl) |
+| **Automatic** | بهینه‌سازی خودکار بر اساس RAM و CPU سرور |
+| **Manual** | تنظیم دستی ۱۴ پارامتر پروتکل KCP |
+
+## امنیت
+
+- **قوانین فایروال** با تگ `paqx` مشخص می‌شوند — هنگام حذف فقط قوانین PaqX پاک می‌شوند
+- **تنظیمات کرنل** در فایل جداگانه `/etc/sysctl.d/99-paqx.conf` — بدون تغییر `sysctl.conf` اصلی
+- **Docker، Traefik، Nginx** و سایر سرویس‌ها هیچ تأثیری نمی‌پذیرند
+
+---
+
+**Developed by [Bolandi-Org](https://github.com/bolandi-org)**
