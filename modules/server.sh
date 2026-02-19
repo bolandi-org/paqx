@@ -191,9 +191,10 @@ EOF
     PUB_IP=$(get_public_ip)
     
     echo -e "\n${GREEN}${BOLD}Server Installed!${NC}"
-    echo -e "IP:   ${YELLOW}$PUB_IP${NC}"
-    echo -e "Port: ${YELLOW}$SRV_PORT${NC}"
-    echo -e "Key:  ${YELLOW}$SRV_KEY${NC}"
+    echo -e "${CYAN}┌─────────────────────────────────────────┐${NC}"
+    echo -e "${CYAN}│${NC} ${BOLD}Address:${NC}  ${YELLOW}${PUB_IP}:${SRV_PORT}${NC}"
+    echo -e "${CYAN}│${NC} ${BOLD}Key:${NC}      ${YELLOW}${SRV_KEY}${NC}"
+    echo -e "${CYAN}└─────────────────────────────────────────┘${NC}"
 }
 
 # --- SECOND RUN: Settings submenu ---

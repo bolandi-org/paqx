@@ -220,10 +220,15 @@ downgrade_core() {
 
 # --- Server Panel ---
 panel_server() {
+    # Read config values once per loop
+    local srv_port=$(grep 'addr: ":' "$CONF_FILE" 2>/dev/null | head -1 | grep -oP ':\K[0-9]+')
+    local srv_key=$(grep 'key:' "$CONF_FILE" 2>/dev/null | head -1 | grep -oP '"[^"]*"' | tr -d '"')
+    local srv_ip=$(get_public_ip)
+    
     while true; do
         clear
         echo -e "${BLUE}╔═══════════════════════════════╗${NC}"
-        echo -e "${BLUE}║     PaqX Server Panel         ║${NC}"
+        echo -e "${BLUE}║       PaqX Server Panel       ║${NC}"
         echo -e "${BLUE}╚═══════════════════════════════╝${NC}"
         
         if systemctl is-active --quiet paqx; then
@@ -234,6 +239,13 @@ panel_server() {
         
         local is_enabled=$(systemctl is-enabled paqx 2>/dev/null)
         echo -e "Autostart: $([ "$is_enabled" = "enabled" ] && echo "${GREEN}Enabled${NC}" || echo "${RED}Disabled${NC}")"
+        
+        # Connection info card
+        echo ""
+        echo -e "${CYAN}┌─────────────────────────────────────────┐${NC}"
+        echo -e "${CYAN}│${NC} ${BOLD}Address:${NC}  ${YELLOW}${srv_ip}:${srv_port}${NC}"
+        echo -e "${CYAN}│${NC} ${BOLD}Key:${NC}      ${YELLOW}${srv_key}${NC}"
+        echo -e "${CYAN}└─────────────────────────────────────────┘${NC}"
         echo ""
         echo " 1) Status"
         echo " 2) Log"

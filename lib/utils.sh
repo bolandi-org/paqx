@@ -61,7 +61,6 @@ detect_arch() {
         mips) echo "mips" ;;
         *) echo "unknown" ;;
     esac
-    esac
 }
 
 service_is_active() {
