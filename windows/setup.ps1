@@ -14,6 +14,8 @@ $BinaryName = "paqet.exe"
 $BinaryPath = Join-Path $ScriptDir $BinaryName
 $ConfigPath = Join-Path $ScriptDir "config.yaml"
 $TaskName = "PaqX_Client"
+$LogPath = Join-Path $ScriptDir "paqx.log"
+$LauncherPath = Join-Path $ScriptDir "paqx_run.cmd"
 $RepoOwner = "hanselime"
 $RepoName = "paqet"
 $NpcapUrl = "https://npcap.com/dist/npcap-1.80.exe"
@@ -283,13 +285,22 @@ transport:
     [System.IO.File]::WriteAllText($ConfigPath, $configContent, $utf8NoBom)
     Write-OK "Config saved: $ConfigPath"
 
-    # 6. Create Scheduled Task
+    # 6. Create Launcher and Scheduled Task
     Write-Info "Creating startup task..."
-    $action = New-ScheduledTaskAction -Execute $BinaryPath -Argument "run -c `"$ConfigPath`"" -WorkingDirectory $ScriptDir
+
+    # Create launcher that redirects output to log
+    $launcherContent = "@`"$BinaryPath`" run -c `"$ConfigPath`" >> `"$LogPath`" 2>&1"
+    $utf8NoBom2 = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($LauncherPath, $launcherContent, $utf8NoBom2)
+
+    $action = New-ScheduledTaskAction -Execute $LauncherPath -WorkingDirectory $ScriptDir
     $trigger = New-ScheduledTaskTrigger -AtLogon
     $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+
+    # Clear log for fresh start
+    if (Test-Path $LogPath) { Remove-Item $LogPath -Force }
 
     Start-ScheduledTask -TaskName $TaskName
     Start-Sleep -Seconds 2
@@ -385,16 +396,21 @@ function Show-Dashboard {
             "4" { Show-Settings }
             "5" {
                 Write-CL ""
-                Write-Info "Task Scheduler Info:"
-                Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Get-ScheduledTaskInfo | Format-List
-                Write-CL ""
-                # Try to show process output
-                $proc = Get-Process -Name "paqet" -ErrorAction SilentlyContinue
-                if ($proc) {
-                    Write-OK "paqet process running (PID: $($proc.Id))"
+                if (Test-Path $LogPath) {
+                    $logLines = Get-Content $LogPath -Tail 10 -ErrorAction SilentlyContinue
+                    if ($logLines) {
+                        Write-Info "Last 10 log entries:"
+                        Write-CL ""
+                        foreach ($l in $logLines) {
+                            Write-CL "  $l" "Gray"
+                        }
+                    }
+                    else {
+                        Write-Warn "Log file is empty."
+                    }
                 }
                 else {
-                    Write-Warn "paqet process not found."
+                    Write-Warn "No log file found. Restart the service to enable logging."
                 }
                 Write-CL ""
                 Read-Host "Press Enter to continue"
@@ -574,6 +590,8 @@ function Uninstall-PaqX {
     Write-Info "Removing files..."
     Remove-Item -Path $BinaryPath -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $ConfigPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $LogPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $LauncherPath -Force -ErrorAction SilentlyContinue
 
     Write-CL ""
     Write-OK "PaqX Client completely uninstalled."
