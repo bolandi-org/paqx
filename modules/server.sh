@@ -118,13 +118,27 @@ install_server() {
     IFACE=$(scan_interface)
     SRV_KEY=$(generate_key)
     
+    # Detect local IP on the interface
+    LOCAL_IP=$(ip -4 addr show "$IFACE" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
+    [ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    
+    # Detect gateway MAC
+    local gw_ip=$(ip route show default | awk '/default/ {print $3}')
+    GW_MAC=""
+    if [ -n "$gw_ip" ]; then
+        GW_MAC=$(ip neigh show "$gw_ip" 2>/dev/null | awk '/lladdr/{print $5; exit}')
+        if [ -z "$GW_MAC" ]; then
+            ping -c 1 -W 2 "$gw_ip" >/dev/null 2>&1 || true
+            sleep 1
+            GW_MAC=$(ip neigh show "$gw_ip" 2>/dev/null | awk '/lladdr/{print $5; exit}')
+        fi
+    fi
+    
     if [ "$SRV_MANUAL" = "1" ]; then
-        # Use user-provided values
         CONF_RCVWND=$P_RCVWND
         CONF_SNDWND=$P_SNDWND
         CONF_SOCKBUF=4194304
     else
-        # Auto-calculate based on server specs
         calculate_config
         P_NODELAY=1; P_INTERVAL=10; P_RESEND=2; P_NOCONG=1
         P_WDELAY=false; P_ACKNO=true; P_MTU=1350
@@ -135,19 +149,23 @@ install_server() {
     mkdir -p "$CONF_DIR"
     cat > "$CONF_FILE" <<EOF
 role: "server"
+
 log:
   level: "info"
+
 listen:
-  addr: ":$SRV_PORT"
+  addr: ":${SRV_PORT}"
+
 network:
-  interface: "$IFACE"
+  interface: "${IFACE}"
   ipv4:
-    addr: "0.0.0.0:$SRV_PORT"
+    addr: "${LOCAL_IP}:${SRV_PORT}"
+    router_mac: "${GW_MAC}"
+
 transport:
   protocol: "kcp"
   kcp:
     mode: "fast"
-
     nodelay: $P_NODELAY
     interval: $P_INTERVAL
     resend: $P_RESEND
@@ -158,13 +176,11 @@ transport:
     rcvwnd: $P_RCVWND
     sndwnd: $P_SNDWND
     block: "$P_BLOCK"
-    key: "$SRV_KEY"
+    key: "${SRV_KEY}"
     smuxbuf: $P_SMUXBUF
     streambuf: $P_STREAMBUF
     dshard: $P_DSHARD
     pshard: $P_PSHARD
-  pcap:
-    sockbuf: $CONF_SOCKBUF
 EOF
 
     cat > "$SERVICE_FILE_LINUX" <<EOF
@@ -190,11 +206,19 @@ EOF
     
     PUB_IP=$(get_public_ip)
     
+    local addr_str="${PUB_IP}:${SRV_PORT}"
+    local key_str="${SRV_KEY}"
+    # Dynamic card width
+    local max_len=${#addr_str}
+    [ ${#key_str} -gt $max_len ] && max_len=${#key_str}
+    local card_w=$((max_len + 14))
+    local border=$(printf '─%.0s' $(seq 1 $card_w))
+    
     echo -e "\n${GREEN}${BOLD}Server Installed!${NC}"
-    echo -e "${CYAN}┌─────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}│${NC} ${BOLD}Address:${NC}  ${YELLOW}${PUB_IP}:${SRV_PORT}${NC}"
-    echo -e "${CYAN}│${NC} ${BOLD}Key:${NC}      ${YELLOW}${SRV_KEY}${NC}"
-    echo -e "${CYAN}└─────────────────────────────────────────┘${NC}"
+    echo -e "${CYAN}┌${border}┐${NC}"
+    echo -e "${CYAN}│${NC} ${BOLD}Address:${NC}  ${YELLOW}${addr_str}${NC}$(printf '%*s' $((card_w - ${#addr_str} - 11)) '')${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC} ${BOLD}Key:${NC}      ${YELLOW}${key_str}${NC}$(printf '%*s' $((card_w - ${#key_str} - 11)) '')${CYAN}│${NC}"
+    echo -e "${CYAN}└${border}┘${NC}"
 }
 
 # --- SECOND RUN: Settings submenu ---

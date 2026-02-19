@@ -242,10 +242,16 @@ panel_server() {
         
         # Connection info card
         echo ""
-        echo -e "${CYAN}┌─────────────────────────────────────────┐${NC}"
-        echo -e "${CYAN}│${NC} ${BOLD}Address:${NC}  ${YELLOW}${srv_ip}:${srv_port}${NC}"
-        echo -e "${CYAN}│${NC} ${BOLD}Key:${NC}      ${YELLOW}${srv_key}${NC}"
-        echo -e "${CYAN}└─────────────────────────────────────────┘${NC}"
+        local addr_str="${srv_ip}:${srv_port}"
+        local key_str="${srv_key}"
+        local max_len=${#addr_str}
+        [ ${#key_str} -gt $max_len ] && max_len=${#key_str}
+        local card_w=$((max_len + 14))
+        local border=$(printf '─%.0s' $(seq 1 $card_w))
+        echo -e "${CYAN}┌${border}┐${NC}"
+        echo -e "${CYAN}│${NC} ${BOLD}Address:${NC}  ${YELLOW}${addr_str}${NC}$(printf '%*s' $((card_w - ${#addr_str} - 11)) '')${CYAN}│${NC}"
+        echo -e "${CYAN}│${NC} ${BOLD}Key:${NC}      ${YELLOW}${key_str}${NC}$(printf '%*s' $((card_w - ${#key_str} - 11)) '')${CYAN}│${NC}"
+        echo -e "${CYAN}└${border}┘${NC}"
         echo ""
         echo " 1) Status"
         echo " 2) Log"

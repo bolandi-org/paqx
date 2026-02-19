@@ -61,22 +61,42 @@ install_client_openwrt() {
     opkg install curl libpcap-dev kmod-nft-bridge
     
     IFACE=$(scan_interface)
-    GW_MAC=$(get_gateway_mac)
+    
+    # Detect local IP
+    LOCAL_IP=$(ip -4 addr show "$IFACE" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
+    [ -z "$LOCAL_IP" ] && LOCAL_IP=$(ip addr show br-lan 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
+    
+    # Detect gateway MAC
+    local gw_ip=$(ip route show default | awk '/default/ {print $3}')
+    GW_MAC=""
+    if [ -n "$gw_ip" ]; then
+        GW_MAC=$(ip neigh show "$gw_ip" 2>/dev/null | awk '/lladdr/{print $5; exit}')
+        if [ -z "$GW_MAC" ]; then
+            ping -c 1 -W 2 "$gw_ip" >/dev/null 2>&1 || true
+            sleep 1
+            GW_MAC=$(ip neigh show "$gw_ip" 2>/dev/null | awk '/lladdr/{print $5; exit}')
+        fi
+    fi
     
     mkdir -p "$CONF_DIR"
     cat > "$CONF_FILE" <<EOF
 role: "client"
+
 log:
   level: "info"
+
 socks5:
-  - listen: "0.0.0.0:$WRT_LOC_PORT"
+  - listen: "0.0.0.0:${WRT_LOC_PORT}"
+
 network:
-  interface: "$IFACE"
+  interface: "${IFACE}"
   ipv4:
-    addr: "0.0.0.0:0"
-    router_mac: "$GW_MAC"
+    addr: "${LOCAL_IP}:0"
+    router_mac: "${GW_MAC}"
+
 server:
-  addr: "$WRT_SRV_IP:$WRT_SRV_PORT"
+  addr: "${WRT_SRV_IP}:${WRT_SRV_PORT}"
+
 transport:
   protocol: "kcp"
   kcp:
@@ -92,7 +112,7 @@ transport:
     rcvwnd: $P_RCVWND
     sndwnd: $P_SNDWND
     block: "$P_BLOCK"
-    key: "$WRT_SRV_KEY"
+    key: "${WRT_SRV_KEY}"
     smuxbuf: $P_SMUXBUF
     streambuf: $P_STREAMBUF
     dshard: $P_DSHARD
