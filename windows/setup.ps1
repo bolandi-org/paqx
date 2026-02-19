@@ -167,8 +167,7 @@ function Install-PaqXClient {
     # 3. Client config
     Write-CL ""
     Write-CL "--- Client Configuration ---" "Yellow"
-    $serverIP = Read-Host "  Server IP"
-    $serverPort = Read-Host "  Server Port"
+    $serverAddr = Read-Host "  Server (IP:Port)"
     $key = Read-Host "  Encryption Key"
 
     Write-CL ""
@@ -204,7 +203,7 @@ network:
     router_mac: "$($net.GatewayMAC)"
 
 server:
-  addr: "${serverIP}:${serverPort}"
+  addr: "${serverAddr}"
 
 transport:
   protocol: "kcp"
@@ -246,7 +245,7 @@ network:
     router_mac: "$($net.GatewayMAC)"
 
 server:
-  addr: "${serverIP}:${serverPort}"
+  addr: "${serverAddr}"
 
 transport:
   protocol: "kcp"
@@ -283,14 +282,14 @@ function Show-Dashboard {
     while ($true) {
         # Re-read config each loop
         $srvAddr = ""
-        $srvKey = ""
         $socksPort = ""
         if (Test-Path $ConfigPath) {
+            $section = ""
             $lines = Get-Content $ConfigPath
             foreach ($line in $lines) {
-                if ($line -match '^\s*addr:\s*"([^"]+)"' -and $srvAddr -eq "") { $srvAddr = $Matches[1] }
-                if ($line -match '^\s*key:\s*"([^"]+)"') { $srvKey = $Matches[1] }
-                if ($line -match '^\s*listen:\s*"([^"]+)"') { $socksPort = $Matches[1] }
+                if ($line -match '^(\w+):') { $section = $Matches[1] }
+                if ($section -eq "server" -and $line -match '^\s*addr:\s*"([^"]+)"') { $srvAddr = $Matches[1] }
+                if ($line -match '^\s*-?\s*listen:\s*"([^"]+)"') { $socksPort = $Matches[1] }
             }
         }
 
@@ -315,7 +314,7 @@ function Show-Dashboard {
         $autoText = if ($isEnabled) { "Enabled" } else { "Disabled" }
         $autoColor = if ($isEnabled) { "Green" } else { "Red" }
 
-        $maxLen = @($srvAddr.Length, $srvKey.Length, $socksPort.Length, 12) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
+        $maxLen = @($srvAddr.Length, $socksPort.Length, 12) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
         $cardW = $maxLen + 16
         if ($cardW -lt 42) { $cardW = 42 }
         $border = "-" * $cardW
@@ -325,7 +324,6 @@ function Show-Dashboard {
         Write-C  "  | " "Cyan"; Write-C "Auto:    " "White"; Write-C "$autoText" $autoColor; Write-C (" " * ($cardW - $autoText.Length - 11)); Write-CL "|" "Cyan"
         Write-CL "  +$border+" "Cyan"
         Write-C  "  | " "Cyan"; Write-C "Server:  " "White"; Write-C "$srvAddr" "Yellow"; Write-C (" " * ($cardW - $srvAddr.Length - 11)); Write-CL "|" "Cyan"
-        Write-C  "  | " "Cyan"; Write-C "Key:     " "White"; Write-C "$srvKey" "Yellow"; Write-C (" " * ($cardW - $srvKey.Length - 11)); Write-CL "|" "Cyan"
         Write-C  "  | " "Cyan"; Write-C "SOCKS5:  " "White"; Write-C "$socksPort" "Yellow"; Write-C (" " * ($cardW - $socksPort.Length - 11)); Write-CL "|" "Cyan"
         Write-CL "  +$border+" "Cyan"
 
@@ -404,17 +402,17 @@ function Show-Settings {
         Write-CL "  1) Change Server (IP:Port & Key)"
         Write-CL "  2) Change Local SOCKS5 Port"
         Write-CL "  3) Change Protocol Mode"
+        Write-CL "  4) View Server Info"
         Write-CL "  0) Back"
         $s = Read-Host "  Select"
 
         switch ($s) {
             "1" {
-                $newIP = Read-Host "  New Server IP"
-                $newPort = Read-Host "  New Server Port"
+                $newAddr = Read-Host "  New Server (IP:Port)"
                 $newKey = Read-Host "  New Encryption Key"
 
                 $content = Get-Content $ConfigPath -Raw
-                $content = $content -replace '(server:\s*\n\s*addr:\s*)"[^"]*"', "`$1`"${newIP}:${newPort}`""
+                $content = $content -replace '(server:\s*\n\s*addr:\s*)"[^"]*"', "`$1`"$newAddr`""
                 $content = $content -replace '(key:\s*)"[^"]*"', "`$1`"$newKey`""
                 Set-Content -Path $ConfigPath -Value $content -Encoding UTF8
 
@@ -484,6 +482,27 @@ transport:
                 Set-Content -Path $ConfigPath -Value ($head + $transport) -Encoding UTF8
                 Write-OK "Protocol mode updated."
                 Restart-PaqXTask
+            }
+            "4" {
+                Write-CL ""
+                $infoAddr = ""
+                $infoKey = ""
+                $infoSocks = ""
+                if (Test-Path $ConfigPath) {
+                    $sec = ""
+                    foreach ($ln in (Get-Content $ConfigPath)) {
+                        if ($ln -match '^(\w+):') { $sec = $Matches[1] }
+                        if ($sec -eq "server" -and $ln -match '^\s*addr:\s*"([^"]+)"') { $infoAddr = $Matches[1] }
+                        if ($ln -match '^\s*key:\s*"([^"]+)"') { $infoKey = $Matches[1] }
+                        if ($ln -match '^\s*-?\s*listen:\s*"([^"]+)"') { $infoSocks = $Matches[1] }
+                    }
+                }
+                Write-CL "  --- Current Server Info ---" "Yellow"
+                Write-CL "  Server:   $infoAddr" "Cyan"
+                Write-CL "  Key:      $infoKey" "Cyan"
+                Write-CL "  SOCKS5:   $infoSocks" "Cyan"
+                Write-CL ""
+                Read-Host "  Press Enter to continue"
             }
             "0" { return }
             default { return }
