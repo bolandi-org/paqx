@@ -78,20 +78,30 @@ update_core() {
 
 uninstall_menu_call() {
      local role=$1
-     # Ensure modules are loaded
+     
+     # Debug check
      if [ "$role" = "server" ] && ! type remove_server >/dev/null 2>&1; then
-        if [ -f "$MODULES_DIR/server.sh" ]; then source "$MODULES_DIR/server.sh"; fi
+        # Try sourcing from variable
+        if [ -f "$MODULES_DIR/server.sh" ]; then 
+            source "$MODULES_DIR/server.sh"
+        elif [ -f "/usr/local/paqx/modules/server.sh" ]; then
+            # Fallback to hardcoded default
+            source "/usr/local/paqx/modules/server.sh"
+        fi
      fi
      
      if [ "$role" = "client" ]; then
-        if [ "$(detect_os)" = "openwrt" ]; then
-            if ! type remove_client_openwrt >/dev/null 2>&1 && [ -f "$MODULES_DIR/client_openwrt.sh" ]; then
-                source "$MODULES_DIR/client_openwrt.sh"
-            fi
+        local os_type=$(detect_os)
+        if [ "$os_type" = "openwrt" ]; then
+             if ! type remove_client_openwrt >/dev/null 2>&1; then
+                [ -f "$MODULES_DIR/client_openwrt.sh" ] && source "$MODULES_DIR/client_openwrt.sh"
+                [ -f "/usr/local/paqx/modules/client_openwrt.sh" ] && source "/usr/local/paqx/modules/client_openwrt.sh"
+             fi
         else
-            if ! type remove_client_linux >/dev/null 2>&1 && [ -f "$MODULES_DIR/client.sh" ]; then
-                source "$MODULES_DIR/client.sh"
-            fi
+             if ! type remove_client_linux >/dev/null 2>&1; then
+                [ -f "$MODULES_DIR/client.sh" ] && source "$MODULES_DIR/client.sh"
+                [ -f "/usr/local/paqx/modules/client.sh" ] && source "/usr/local/paqx/modules/client.sh"
+             fi
         fi
      fi
 
@@ -100,14 +110,20 @@ uninstall_menu_call() {
             if type remove_server >/dev/null 2>&1; then
                 remove_server
             else
-                echo "Error: function/module 'remove_server' not found. Check install."
+                echo -e "${RED}Error: 'remove_server' function not found.${NC}"
+                echo "Debug info:"
+                echo "MODULES_DIR: $MODULES_DIR"
+                echo "Looking for: $MODULES_DIR/server.sh"
+                if [ -f "$MODULES_DIR/server.sh" ]; then echo "File exists."; else echo "File MISSING."; fi
+                echo "Please try 'Update Core' -> 'Update Manager Scripts' first."
             fi
             ;;
         "client") 
-            if [ "$(detect_os)" = "openwrt" ]; then 
-                remove_client_openwrt
-            else 
-                remove_client_linux
+            if type remove_client_linux >/dev/null 2>&1 || type remove_client_openwrt >/dev/null 2>&1; then
+                 if [ "$(detect_os)" = "openwrt" ]; then remove_client_openwrt; else remove_client_linux; fi
+            else
+                 echo -e "${RED}Error: Client uninstall function not found.${NC}"
+                 echo "Please try 'Update Core' -> 'Update Manager Scripts'."
             fi
             ;;
      esac
