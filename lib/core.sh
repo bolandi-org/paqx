@@ -31,3 +31,10 @@ MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
+
+# --- Shared Helpers ---
+
+revert_kernel() {
+    rm -f /etc/sysctl.d/99-paqx.conf 2>/dev/null
+    sysctl --system >/dev/null 2>&1 || true
+}

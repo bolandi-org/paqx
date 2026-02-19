@@ -220,9 +220,10 @@ remove_client_linux() {
     rm -f "$SERVICE_FILE_LINUX"
     systemctl daemon-reload 2>/dev/null || true
     
-    # 2. Remove kernel optimizations
+    # 2. Remove kernel optimizations (separate file only)
     log_info "Reverting kernel optimizations..."
-    rm -f /etc/sysctl.d/99-paqx.conf 2>/dev/null
+    revert_kernel
+    # Also clean legacy entries from old versions that wrote to sysctl.conf
     sed -i '/net.core.default_qdisc=fq/d' /etc/sysctl.conf 2>/dev/null || true
     sed -i '/net.ipv4.tcp_congestion_control=bbr/d' /etc/sysctl.conf 2>/dev/null || true
     sed -i '/net.ipv4.tcp_fastopen=3/d' /etc/sysctl.conf 2>/dev/null || true
@@ -231,7 +232,6 @@ remove_client_linux() {
     sed -i '/net.core.wmem_max = 33554432/d' /etc/sysctl.conf 2>/dev/null || true
     sed -i '/net.core.rmem_default = 16777216/d' /etc/sysctl.conf 2>/dev/null || true
     sed -i '/net.core.wmem_default = 16777216/d' /etc/sysctl.conf 2>/dev/null || true
-    sysctl -p >/dev/null 2>&1 || true
     
     # 3. Kill any remaining paqet processes
     pkill -f "paqet" 2>/dev/null || true

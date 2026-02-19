@@ -8,21 +8,20 @@ source "$LIB_DIR/crypto.sh"
 optimize_kernel() {
     log_info "Optimizing Kernel Parameters..."
     
-    if ! grep -q "tcp_bbr" /etc/sysctl.conf; then
-        echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
-        echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-        echo "net.ipv4.tcp_fastopen=3" >> /etc/sysctl.conf
-    fi
-    
-    cat >> /etc/sysctl.conf <<EOF
-fs.file-max = 1000000
-net.core.rmem_max = 33554432
-net.core.wmem_max = 33554432
-net.core.rmem_default = 16777216
-net.core.wmem_default = 16777216
+    # Use separate file - NEVER modify /etc/sysctl.conf directly
+    cat > /etc/sysctl.d/99-paqx.conf <<EOF
+# PaqX kernel optimizations - safe to remove
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+net.ipv4.tcp_fastopen=3
+fs.file-max=1000000
+net.core.rmem_max=33554432
+net.core.wmem_max=33554432
+net.core.rmem_default=16777216
+net.core.wmem_default=16777216
 EOF
     
-    sysctl -p >/dev/null 2>&1
+    sysctl --system >/dev/null 2>&1
     log_success "Kernel optimized."
 }
 
@@ -46,24 +45,162 @@ calculate_config() {
     elif [ "$cpu_cores" -ge 2 ]; then CONF_CONN=2; fi
 }
 
+PAQX_FW_TAG="paqx"
+
 apply_firewall() {
     local port="$1"
     log_info "Applying Firewall Rules (Anti-Probing)..."
     
-    if command -v firewall-cmd >/dev/null; then
-        if systemctl is-active --quiet firewalld; then
-            firewall-cmd --direct --add-rule ipv4 raw PREROUTING 0 -p tcp --dport "$port" -j NOTRACK >/dev/null 2>&1
-            firewall-cmd --direct --add-rule ipv4 raw OUTPUT 0 -p tcp --sport "$port" -j NOTRACK >/dev/null 2>&1
-            firewall-cmd --direct --add-rule ipv4 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -j DROP >/dev/null 2>&1
-            log_success "Firewalld rules applied."
-            return
-        fi
+    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+        # firewalld with comment tags
+        firewall-cmd --direct --query-rule ipv4 raw PREROUTING 0 -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || \
+            firewall-cmd --direct --add-rule ipv4 raw PREROUTING 0 -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        firewall-cmd --direct --query-rule ipv4 raw OUTPUT 0 -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || \
+            firewall-cmd --direct --add-rule ipv4 raw OUTPUT 0 -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        firewall-cmd --direct --query-rule ipv4 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -m comment --comment "$PAQX_FW_TAG" -j DROP 2>/dev/null || \
+            firewall-cmd --direct --add-rule ipv4 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -m comment --comment "$PAQX_FW_TAG" -j DROP 2>/dev/null || true
+        # IPv6
+        firewall-cmd --direct --query-rule ipv6 raw PREROUTING 0 -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || \
+            firewall-cmd --direct --add-rule ipv6 raw PREROUTING 0 -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        firewall-cmd --direct --query-rule ipv6 raw OUTPUT 0 -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || \
+            firewall-cmd --direct --add-rule ipv6 raw OUTPUT 0 -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        firewall-cmd --direct --query-rule ipv6 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -m comment --comment "$PAQX_FW_TAG" -j DROP 2>/dev/null || \
+            firewall-cmd --direct --add-rule ipv6 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -m comment --comment "$PAQX_FW_TAG" -j DROP 2>/dev/null || true
+        log_success "Firewalld rules applied."
+        return
     fi
     
-    iptables -t raw -I PREROUTING -p tcp --dport "$port" -j NOTRACK >/dev/null 2>&1
-    iptables -t raw -I OUTPUT -p tcp --sport "$port" -j NOTRACK >/dev/null 2>&1
-    iptables -t mangle -I OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP >/dev/null 2>&1
+    # iptables with comment tags - check before adding (idempotent)
+    modprobe iptable_raw 2>/dev/null || true
+    modprobe iptable_mangle 2>/dev/null || true
+    
+    iptables -t raw -C PREROUTING -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || \
+        iptables -t raw -A PREROUTING -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+    iptables -t raw -C OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || \
+        iptables -t raw -A OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+    iptables -t mangle -C OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" --tcp-flags RST RST -j DROP 2>/dev/null || \
+        iptables -t mangle -A OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" --tcp-flags RST RST -j DROP 2>/dev/null || true
+    
+    # IPv6
+    if command -v ip6tables >/dev/null 2>&1; then
+        ip6tables -t raw -C PREROUTING -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || \
+            ip6tables -t raw -A PREROUTING -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        ip6tables -t raw -C OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || \
+            ip6tables -t raw -A OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        ip6tables -t mangle -C OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" --tcp-flags RST RST -j DROP 2>/dev/null || \
+            ip6tables -t mangle -A OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" --tcp-flags RST RST -j DROP 2>/dev/null || true
+    fi
+    
     log_success "IPTables rules applied."
+}
+
+remove_firewall() {
+    local port="$1"
+    log_info "Removing firewall rules for port $port..."
+    
+    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+        firewall-cmd --direct --remove-rule ipv4 raw PREROUTING 0 -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        firewall-cmd --direct --remove-rule ipv4 raw OUTPUT 0 -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        firewall-cmd --direct --remove-rule ipv4 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -m comment --comment "$PAQX_FW_TAG" -j DROP 2>/dev/null || true
+        firewall-cmd --permanent --direct --remove-rule ipv4 raw PREROUTING 0 -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        firewall-cmd --permanent --direct --remove-rule ipv4 raw OUTPUT 0 -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        firewall-cmd --permanent --direct --remove-rule ipv4 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -m comment --comment "$PAQX_FW_TAG" -j DROP 2>/dev/null || true
+        # IPv6
+        firewall-cmd --direct --remove-rule ipv6 raw PREROUTING 0 -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        firewall-cmd --direct --remove-rule ipv6 raw OUTPUT 0 -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        firewall-cmd --direct --remove-rule ipv6 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -m comment --comment "$PAQX_FW_TAG" -j DROP 2>/dev/null || true
+        log_success "Firewalld rules removed."
+        return
+    fi
+    
+    if command -v iptables >/dev/null 2>&1; then
+        # Remove tagged rules
+        iptables -t raw -D PREROUTING -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        iptables -t raw -D OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        iptables -t mangle -D OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" --tcp-flags RST RST -j DROP 2>/dev/null || true
+        # Also remove legacy untagged rules (from old versions)
+        iptables -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
+        iptables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
+        iptables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
+        log_success "IPTables rules removed."
+    fi
+    
+    if command -v ip6tables >/dev/null 2>&1; then
+        ip6tables -t raw -D PREROUTING -p tcp --dport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        ip6tables -t raw -D OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" -j NOTRACK 2>/dev/null || true
+        ip6tables -t mangle -D OUTPUT -p tcp --sport "$port" -m comment --comment "$PAQX_FW_TAG" --tcp-flags RST RST -j DROP 2>/dev/null || true
+        ip6tables -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
+        ip6tables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
+        ip6tables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
+    fi
+}
+
+remove_all_paqx_firewall_rules() {
+    log_info "Removing ALL paqx firewall rules..."
+    
+    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+        local rules
+        rules=$(firewall-cmd --direct --get-all-rules 2>/dev/null) || true
+        if [ -n "$rules" ]; then
+            echo "$rules" | grep "$PAQX_FW_TAG" | while IFS= read -r rule; do
+                firewall-cmd --direct --remove-rule $rule 2>/dev/null || true
+                firewall-cmd --permanent --direct --remove-rule $rule 2>/dev/null || true
+            done
+        fi
+        return
+    fi
+    
+    if command -v iptables >/dev/null 2>&1; then
+        local i
+        for i in {1..10}; do
+            iptables -t raw -S 2>/dev/null | grep -q "$PAQX_FW_TAG" || break
+            iptables -t raw -S 2>/dev/null | grep "$PAQX_FW_TAG" | while read -r rule; do
+                local del_rule="${rule/-A /-D }"
+                eval "iptables -t raw $del_rule" 2>/dev/null || true
+            done
+        done
+        for i in {1..10}; do
+            iptables -t mangle -S 2>/dev/null | grep -q "$PAQX_FW_TAG" || break
+            iptables -t mangle -S 2>/dev/null | grep "$PAQX_FW_TAG" | while read -r rule; do
+                local del_rule="${rule/-A /-D }"
+                eval "iptables -t mangle $del_rule" 2>/dev/null || true
+            done
+        done
+        for i in {1..10}; do
+            iptables -S 2>/dev/null | grep -q "$PAQX_FW_TAG" || break
+            iptables -S 2>/dev/null | grep "$PAQX_FW_TAG" | while read -r rule; do
+                local del_rule="${rule/-A /-D }"
+                eval "iptables $del_rule" 2>/dev/null || true
+            done
+        done
+    fi
+    
+    if command -v ip6tables >/dev/null 2>&1; then
+        local i
+        for i in {1..10}; do
+            ip6tables -t raw -S 2>/dev/null | grep -q "$PAQX_FW_TAG" || break
+            ip6tables -t raw -S 2>/dev/null | grep "$PAQX_FW_TAG" | while read -r rule; do
+                local del_rule="${rule/-A /-D }"
+                eval "ip6tables -t raw $del_rule" 2>/dev/null || true
+            done
+        done
+        for i in {1..10}; do
+            ip6tables -t mangle -S 2>/dev/null | grep -q "$PAQX_FW_TAG" || break
+            ip6tables -t mangle -S 2>/dev/null | grep "$PAQX_FW_TAG" | while read -r rule; do
+                local del_rule="${rule/-A /-D }"
+                eval "ip6tables -t mangle $del_rule" 2>/dev/null || true
+            done
+        done
+        for i in {1..10}; do
+            ip6tables -S 2>/dev/null | grep -q "$PAQX_FW_TAG" || break
+            ip6tables -S 2>/dev/null | grep "$PAQX_FW_TAG" | while read -r rule; do
+                local del_rule="${rule/-A /-D }"
+                eval "ip6tables $del_rule" 2>/dev/null || true
+            done
+        done
+    fi
+    
+    log_success "All paqx firewall rules removed."
 }
 
 # --- FIRST RUN: Pre-install prompts ---
@@ -296,6 +433,8 @@ configure_server() {
                 # Update ipv4 addr (any IP:PORT pattern)
                 sed -i "s/\(addr: \"[0-9.]*:\)$OLD_PORT\"/\1$NEW_PORT\"/" "$CONF_FILE"
                 
+                # Remove old port rules, apply new ones
+                [ -n "$OLD_PORT" ] && remove_firewall "$OLD_PORT"
                 apply_firewall "$NEW_PORT"
                 log_success "Port changed to $NEW_PORT"
                 log_info "Restarting service..."
@@ -421,8 +560,8 @@ remove_server() {
     echo "  - PaqX service (systemd)"
     echo "  - paqet binary"
     echo "  - All configuration files"
-    echo "  - Firewall/iptables rules"
-    echo "  - Kernel optimizations"
+    echo "  - Firewall/iptables rules (only paqx-tagged)"
+    echo "  - Kernel optimizations (only /etc/sysctl.d/99-paqx.conf)"
     echo "  - paqx script"
     echo ""
     read -p "Are you sure? (y/N): " confirm
@@ -435,34 +574,15 @@ remove_server() {
     rm -f "$SERVICE_FILE_LINUX"
     systemctl daemon-reload 2>/dev/null || true
     
-    # 2. Remove firewall rules
-    log_info "Removing firewall rules..."
+    # 2. Remove firewall rules (tagged only - safe for Docker/Traefik)
     local port=$(grep 'addr: ":' "$CONF_FILE" 2>/dev/null | head -1 | grep -oP ':\K[0-9]+')
-    if [ -n "$port" ]; then
-        # firewalld
-        if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
-            firewall-cmd --direct --remove-rule ipv4 raw PREROUTING 0 -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
-            firewall-cmd --direct --remove-rule ipv4 raw OUTPUT 0 -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
-            firewall-cmd --direct --remove-rule ipv4 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
-            firewall-cmd --permanent --direct --remove-rule ipv4 raw PREROUTING 0 -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
-            firewall-cmd --permanent --direct --remove-rule ipv4 raw OUTPUT 0 -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
-            firewall-cmd --permanent --direct --remove-rule ipv4 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
-            log_success "Firewalld rules removed."
-        fi
-        
-        # iptables
-        if command -v iptables >/dev/null 2>&1; then
-            iptables -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
-            iptables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
-            iptables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
-            log_success "IPTables rules removed."
-        fi
-    fi
+    [ -n "$port" ] && remove_firewall "$port"
+    remove_all_paqx_firewall_rules
     
-    # 3. Remove kernel optimizations
+    # 3. Remove kernel optimizations (separate file only)
     log_info "Reverting kernel optimizations..."
-    rm -f /etc/sysctl.d/99-paqx.conf 2>/dev/null
-    # Clean entries added to sysctl.conf
+    revert_kernel
+    # Also clean legacy entries from old versions that wrote to sysctl.conf
     sed -i '/net.core.default_qdisc=fq/d' /etc/sysctl.conf 2>/dev/null || true
     sed -i '/net.ipv4.tcp_congestion_control=bbr/d' /etc/sysctl.conf 2>/dev/null || true
     sed -i '/net.ipv4.tcp_fastopen=3/d' /etc/sysctl.conf 2>/dev/null || true
@@ -471,7 +591,6 @@ remove_server() {
     sed -i '/net.core.wmem_max = 33554432/d' /etc/sysctl.conf 2>/dev/null || true
     sed -i '/net.core.rmem_default = 16777216/d' /etc/sysctl.conf 2>/dev/null || true
     sed -i '/net.core.wmem_default = 16777216/d' /etc/sysctl.conf 2>/dev/null || true
-    sysctl -p >/dev/null 2>&1 || true
     
     # 4. Kill any remaining paqet processes
     pkill -f "paqet" 2>/dev/null || true
