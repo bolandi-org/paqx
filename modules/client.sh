@@ -12,14 +12,14 @@ CL_SRV_KEY=""
 CL_LOC_PORT=1080
 
 client_pre_install_linux() {
-    echo -e "\n${BOLD}--- Client Configuration ---${NC}"
+    echo -e "\n${BOLD}--- Client Installation ---${NC}"
     read -p "Server IP: " CL_SRV_IP
     read -p "Server Port: " CL_SRV_PORT
     read -p "Encryption Key: " CL_SRV_KEY
     
-    echo -e "\n--- Configuration Mode ---"
+    echo ""
     echo "1) Automatic (Recommended Defaults)"
-    echo "2) Manual (Advanced Protocol Settings)"
+    echo "2) Manual (Configure all protocol values)"
     read -p "Select [1]: " c_mode
     c_mode=${c_mode:-1}
     
@@ -28,7 +28,7 @@ client_pre_install_linux() {
     
     if [ "$c_mode" = "2" ]; then
         echo -e "\n${YELLOW}--- Protocol Settings ---${NC}"
-        echo "Enter values (leave blank for defaults):"
+        echo "Enter values (press Enter for default):"
         read -p "conn [1]: " P_CONN; P_CONN=${P_CONN:-1}
         read -p "nodelay [1]: " P_NODELAY; P_NODELAY=${P_NODELAY:-1}
         read -p "interval [10]: " P_INTERVAL; P_INTERVAL=${P_INTERVAL:-10}

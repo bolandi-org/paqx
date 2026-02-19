@@ -73,17 +73,39 @@ SRV_KEY=""
 
 server_pre_install() {
     echo -e "\n${BOLD}--- Server Installation ---${NC}"
-    echo "1) Automatic (Random Port)"
-    echo "2) Manual (Custom Port)"
+    
+    # Step 1: Port
+    read -p "Listen Port [8443]: " SRV_PORT
+    SRV_PORT=${SRV_PORT:-8443}
+    
+    # Step 2: Protocol mode
+    echo ""
+    echo "1) Automatic (Recommended - based on server specs)"
+    echo "2) Manual (Configure all protocol values)"
     read -p "Select [1]: " p_mode
     p_mode=${p_mode:-1}
     
-    if [ "$p_mode" = "1" ]; then
-        SRV_PORT=$(shuf -i 2000-65000 -n 1)
-        log_info "Selected Port: $SRV_PORT"
+    if [ "$p_mode" = "2" ]; then
+        echo -e "\n${YELLOW}--- Protocol Settings ---${NC}"
+        echo "Enter values (press Enter for default):"
+        read -p "conn [1]: " P_CONN; P_CONN=${P_CONN:-1}
+        read -p "nodelay [1]: " P_NODELAY; P_NODELAY=${P_NODELAY:-1}
+        read -p "interval [10]: " P_INTERVAL; P_INTERVAL=${P_INTERVAL:-10}
+        read -p "resend [2]: " P_RESEND; P_RESEND=${P_RESEND:-2}
+        read -p "nocongestion [1]: " P_NOCONG; P_NOCONG=${P_NOCONG:-1}
+        read -p "wdelay [false]: " P_WDELAY; P_WDELAY=${P_WDELAY:-false}
+        read -p "acknodelay [true]: " P_ACKNO; P_ACKNO=${P_ACKNO:-true}
+        read -p "mtu [1350]: " P_MTU; P_MTU=${P_MTU:-1350}
+        read -p "rcvwnd [1024]: " P_RCVWND; P_RCVWND=${P_RCVWND:-1024}
+        read -p "sndwnd [1024]: " P_SNDWND; P_SNDWND=${P_SNDWND:-1024}
+        read -p "block [aes]: " P_BLOCK; P_BLOCK=${P_BLOCK:-aes}
+        read -p "smuxbuf [4194304]: " P_SMUXBUF; P_SMUXBUF=${P_SMUXBUF:-4194304}
+        read -p "streambuf [2097152]: " P_STREAMBUF; P_STREAMBUF=${P_STREAMBUF:-2097152}
+        read -p "dshard [10]: " P_DSHARD; P_DSHARD=${P_DSHARD:-10}
+        read -p "pshard [3]: " P_PSHARD; P_PSHARD=${P_PSHARD:-3}
+        SRV_MANUAL=1
     else
-        read -p "Listen Port [8443]: " SRV_PORT
-        SRV_PORT=${SRV_PORT:-8443}
+        SRV_MANUAL=0
     fi
 }
 
@@ -93,9 +115,23 @@ install_server() {
     if [ -z "$SRV_PORT" ]; then server_pre_install; fi
     
     optimize_kernel
-    calculate_config
     IFACE=$(scan_interface)
     SRV_KEY=$(generate_key)
+    
+    if [ "$SRV_MANUAL" = "1" ]; then
+        # Use user-provided values
+        CONF_CONN=$P_CONN
+        CONF_RCVWND=$P_RCVWND
+        CONF_SNDWND=$P_SNDWND
+        CONF_SOCKBUF=4194304
+    else
+        # Auto-calculate based on server specs
+        calculate_config
+        P_CONN=$CONF_CONN; P_NODELAY=1; P_INTERVAL=10; P_RESEND=2; P_NOCONG=1
+        P_WDELAY=false; P_ACKNO=true; P_MTU=1350
+        P_RCVWND=$CONF_RCVWND; P_SNDWND=$CONF_SNDWND
+        P_BLOCK=aes; P_SMUXBUF=4194304; P_STREAMBUF=2097152; P_DSHARD=10; P_PSHARD=3
+    fi
     
     mkdir -p "$CONF_DIR"
     cat > "$CONF_FILE" <<EOF
@@ -112,22 +148,22 @@ transport:
   protocol: "kcp"
   kcp:
     mode: "fast"
-    conn: $CONF_CONN
-    nodelay: 1
-    interval: 10
-    resend: 2
-    nocongestion: 1
-    wdelay: false
-    acknodelay: true
-    mtu: 1350
-    rcvwnd: $CONF_RCVWND
-    sndwnd: $CONF_SNDWND
-    block: "aes"
+    conn: $P_CONN
+    nodelay: $P_NODELAY
+    interval: $P_INTERVAL
+    resend: $P_RESEND
+    nocongestion: $P_NOCONG
+    wdelay: $P_WDELAY
+    acknodelay: $P_ACKNO
+    mtu: $P_MTU
+    rcvwnd: $P_RCVWND
+    sndwnd: $P_SNDWND
+    block: "$P_BLOCK"
     key: "$SRV_KEY"
-    smuxbuf: 4194304
-    streambuf: 2097152
-    dshard: 10
-    pshard: 3
+    smuxbuf: $P_SMUXBUF
+    streambuf: $P_STREAMBUF
+    dshard: $P_DSHARD
+    pshard: $P_PSHARD
   pcap:
     sockbuf: $CONF_SOCKBUF
 EOF
