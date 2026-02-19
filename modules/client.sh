@@ -9,8 +9,38 @@ install_client_linux() {
     read -p "Server IP: " SRV_IP
     read -p "Server Port: " SRV_PORT
     read -p "Encryption Key: " SRV_KEY
-    read -p "Local SOCKS5 Port [1080]: " LOC_PORT
-    LOC_PORT=${LOC_PORT:-1080}
+    
+    echo -e "\n--- Configuration Mode ---"
+    echo "1) Automatic (Recommended Defaults)"
+    echo "2) Manual (Advanced Protocol Settings)"
+    read -p "Select [1]: " c_mode
+    c_mode=${c_mode:-1}
+    
+    # Defaults
+    CONF_MTU=1350
+    CONF_SNDWND=1024
+    CONF_RCVWND=1024
+    CONF_MODE="fast"
+    
+    if [ "$c_mode" = "2" ]; then
+        read -p "MTU [$CONF_MTU]: " CONF_MTU
+        CONF_MTU=${CONF_MTU:-1350}
+        read -p "SndWnd [$CONF_SNDWND]: " CONF_SNDWND
+        CONF_SNDWND=${CONF_SNDWND:-1024}
+        read -p "RcvWnd [$CONF_RCVWND]: " CONF_RCVWND
+        CONF_RCVWND=${CONF_RCVWND:-1024}
+        # Could add more per chart, but these are key.
+    fi
+
+    echo -e "\n--- Local Listener ---"
+    echo "1) Default (1080)"
+    echo "2) Custom"
+    read -p "Select: " l_opt
+    if [ "$l_opt" = "2" ]; then
+        read -p "Local SOCKS5 Port: " LOC_PORT
+    else
+        LOC_PORT=1080
+    fi
     
     IFACE=$(scan_interface)
     GW_MAC=$(get_gateway_mac)
@@ -32,7 +62,10 @@ server:
 transport:
   protocol: "kcp"
   kcp:
-    mode: "fast"
+    mode: "$CONF_MODE"
+    mtu: $CONF_MTU
+    sndwnd: $CONF_SNDWND
+    rcvwnd: $CONF_RCVWND
     key: "$SRV_KEY"
 EOF
 

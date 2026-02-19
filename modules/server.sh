@@ -71,9 +71,21 @@ apply_firewall() {
 install_server() {
     optimize_kernel
     
-    echo -e "\n${BOLD}--- Server Configuration ---${NC}"
-    read -p "Listen Port [8443]: " PORT
-    PORT=${PORT:-8443}
+    echo -e "\n${BOLD}--- Server Installation ---${NC}"
+    echo "1) Automatic (Random Port)"
+    echo "2) Manual (Custom Port)"
+    read -p "Select [1]: " p_mode
+    p_mode=${p_mode:-1}
+    
+    local PORT=""
+    
+    if [ "$p_mode" = "1" ]; then
+        PORT=$(shuf -i 2000-65000 -n 1)
+        log_info "Selected Port: $PORT"
+    else
+        read -p "Listen Port [8443]: " PORT
+        PORT=${PORT:-8443}
+    fi
     
     KEY=$(generate_key)
     log_success "Key Generated: $KEY"
@@ -134,6 +146,8 @@ EOF
     echo -e "IP:   ${YELLOW}$PUB_IP${NC}"
     echo -e "Port: ${YELLOW}$PORT${NC}"
     echo -e "Key:  ${YELLOW}$KEY${NC}"
+    
+    # Save info for dashboard display if needed, but config has it.
 }
 
 configure_server() {

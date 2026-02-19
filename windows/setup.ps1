@@ -111,29 +111,95 @@ transport:
     Write-Host "PaqX Client Started (Scheduled Task)" -ForegroundColor Green
 }
 
-function Show-Menu {
+function Show-Dashboard {
+    while ($true) {
+        Clear-Host
+        Write-Host "=== PaqX Client Dashboard ===" -ForegroundColor Green
+        
+        $Task = Get-ScheduledTask -TaskName "PaqX_Client" -ErrorAction SilentlyContinue
+        if ($Task) {
+            if ($Task.State -eq "Running") { Write-Host "Status: Running" -ForegroundColor Green }
+            else { Write-Host "Status: Stopped ($($Task.State))" -ForegroundColor Red }
+        } else {
+            Write-Host "Status: Not Installed (Task Missing)" -ForegroundColor Red
+        }
+        
+        Write-Host "-------------------"
+        Write-Host "1. Start Service"
+        Write-Host "2. Stop Service"
+        Write-Host "3. Restart Service"
+        Write-Host "4. Settings (Edit Config)"
+        Write-Host "5. Logs (View Last output)"
+        Write-Host "6. Uninstall"
+        Write-Host "0. Exit"
+        
+        $opt = Read-Host "Select Option"
+        switch ($opt) {
+            "1" { Start-ScheduledTask -TaskName "PaqX_Client"; Write-Host "Starting..."; Start-Sleep -Seconds 2 }
+            "2" { Stop-ScheduledTask -TaskName "PaqX_Client"; Write-Host "Stopping..."; Start-Sleep -Seconds 2 }
+            "3" { 
+                Stop-ScheduledTask -TaskName "PaqX_Client" -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 1
+                Start-ScheduledTask -TaskName "PaqX_Client"
+                Write-Host "Restarted."
+                Start-Sleep -Seconds 2
+            }
+            "4" { 
+                Write-Host "Opening config in Notepad..."
+                Start-Process "notepad.exe" "$ConfigPath" -Wait
+                Write-Host "You may need to restart the service to apply changes." -ForegroundColor Yellow
+                Pause
+            }
+            "5" {
+                # Windows task logs are tricky without Event Log.
+                # Assuming app logs to file if configured, but default config logs to stdout?
+                # We can't see stdout of scheduled task easily.
+                # Just show config for now or placeholder.
+                Write-Host "Logs are managed by Windows Task Scheduler history."
+                Write-Host "Checking Task State..."
+                Get-ScheduledTask -TaskName "PaqX_Client" | Get-ScheduledTaskInfo | Format-List
+                Pause
+            }
+            "6" { 
+                Uninstall-Client
+                return
+            }
+            "0" { Exit }
+        }
+    }
+}
+
+function Uninstall-Client {
+    $c = Read-Host "Are you sure you want to uninstall? (y/N)"
+    if ($c -eq "y") {
+        Unregister-ScheduledTask -TaskName "PaqX_Client" -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-Item -Path $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Uninstalled." -ForegroundColor Green
+        Start-Sleep -Seconds 2
+        # Exit to First Run or Exit script?
+        # Usually exit.
+        Exit
+    }
+}
+
+function First-Run {
     Clear-Host
-    Write-Host "=== PAQX MANAGER (WINDOWS) ===" -ForegroundColor Cyan
+    Write-Host "=== PaqX Manager (Windows) - Setup ===" -ForegroundColor Cyan
     Write-Host "1. Install Client"
-    Write-Host "2. Start Service"
-    Write-Host "3. Stop Service"
-    Write-Host "4. Uninstall"
     Write-Host "0. Exit"
     
     $Choice = Read-Host "Select Option"
-    switch ($Choice) {
-        "1" { Install-Client }
-        "2" { Start-ScheduledTask -TaskName "PaqX_Client"; Write-Host "Started." }
-        "3" { Stop-ScheduledTask -TaskName "PaqX_Client"; Write-Host "Stopped." }
-        "4" { 
-            Unregister-ScheduledTask -TaskName "PaqX_Client" -Confirm:$false
-            Remove-Item -Path $InstallDir -Recurse -Force
-            Write-Host "Uninstalled."
-        }
-        "0" { Exit }
+    if ($Choice -eq "1") {
+        Install-Client
+        Show-Dashboard
+    } elseif ($Choice -eq "0") {
+        Exit
     }
-    Pause
 }
 
-# Loop
-while ($true) { Show-Menu }
+# Main Entry Point
+if (Test-Path $ConfigPath) {
+    Show-Dashboard
+} else {
+    First-Run
+}
