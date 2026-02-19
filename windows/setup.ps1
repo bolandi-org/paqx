@@ -540,6 +540,7 @@ function Show-Settings {
         Write-CL "  2) Change Local SOCKS5 Port"
         Write-CL "  3) Change Protocol Mode"
         Write-CL "  4) View Server Info"
+        Write-CL "  5) Refresh Network"
         Write-CL "  0) Back"
         $s = Read-Host "  Select"
 
@@ -646,6 +647,33 @@ transport:
                 Write-CL "  SOCKS5:   $infoSocks" "Cyan"
                 Write-CL ""
                 Read-Host "  Press Enter to continue"
+            }
+            "5" {
+                # Refresh Network
+                Write-CL ""
+                Write-Info "Detecting network..."
+                $net = Get-NetworkInfo
+                Write-CL ""
+                Write-CL "  --- Detected Network ---" "Yellow"
+                Write-CL "  Adapter:     $($net.AdapterName)" "Cyan"
+                Write-CL "  Local IP:    $($net.LocalIP)" "Cyan"
+                Write-CL "  Gateway MAC: $($net.GatewayMAC)" "Cyan"
+                Write-CL "  GUID:        $($net.GUID)" "Cyan"
+                Write-CL ""
+
+                $confirm = Read-Host "  Apply these settings? (Y/n)"
+                if ($confirm -eq "n" -or $confirm -eq "N") { continue }
+
+                $content = Get-Content $ConfigPath -Raw
+                $content = $content -replace '(interface:\s*)"[^"]*"', "`$1`"$($net.AdapterName)`""
+                $content = $content -replace "(guid:\s*)('[^']*'|""[^""]*"")", "`$1'$($net.GUID)'"
+                $content = $content -replace '(addr:\s*)"[^"]*:0"', "`$1`"$($net.LocalIP):0`""
+                $content = $content -replace '(router_mac:\s*)"[^"]*"', "`$1`"$($net.GatewayMAC)`""
+                $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+                [System.IO.File]::WriteAllText($ConfigPath, $content, $utf8NoBom)
+
+                Write-OK "Network settings updated."
+                Restart-PaqXTask
             }
             "0" { return }
             default { return }
