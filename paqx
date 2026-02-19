@@ -35,26 +35,80 @@ get_installed_role() {
     echo "none"
 }
 
+update_manager() {
+    echo -e "\n${BOLD}--- Update Manager ---${NC}"
+    log_info "Updating PaqX scripts..."
+    
+    # Download tarball
+    curl -L "https://github.com/$REPO_OWNER/$REPO_NAME/archive/refs/heads/main.tar.gz" -o /tmp/paqx.tar.gz
+    if [ $? -ne 0 ]; then
+        log_error "Download failed."
+        return 1
+    fi
+    
+    # Extract to PAQX_ROOT (usually /usr/local/paqx)
+    tar -xzf /tmp/paqx.tar.gz -C "$PAQX_ROOT" --strip-components=1
+    rm -f /tmp/paqx.tar.gz
+    
+    # Update binary link if running from /usr/bin
+    if [ "$SCRIPT_DIR" = "/usr/bin" ]; then
+        cp "$PAQX_ROOT/paqx" "/usr/bin/paqx"
+        chmod +x "/usr/bin/paqx"
+    fi
+    
+    log_success "Manager updated. Please restart the panel."
+    exit 0
+}
+
 update_core() {
     echo -e "\n${BOLD}--- Update Core ---${NC}"
+    echo "1) Update Manager Scripts (Recommended)"
+    echo "2) Update Paqet Binary Only"
+    read -p "Select [1]: " u_opt
+    u_opt=${u_opt:-1}
+    
+    if [ "$u_opt" = "1" ]; then
+        update_manager
+    fi
+    
     log_info "Updating Paqet binary..."
-    # Reuse download_binary logic but force overwrite
-    # calling internal function from original script or implementing here?
-    # I need to duplicate or extract download_binary. 
-    # It was defined in the original paqx. I should move it to utils or redefine it.
-    # Since I am replacing paqx, I must redefine it or rely on utils.
-    # 'download_binary' was inside paqx. I'll include it.
     install_base_deps
     download_binary_core
 }
 
 uninstall_menu_call() {
-     # Helper to call module uninstall
      local role=$1
+     # Ensure modules are loaded
+     if [ "$role" = "server" ] && ! type remove_server >/dev/null 2>&1; then
+        if [ -f "$MODULES_DIR/server.sh" ]; then source "$MODULES_DIR/server.sh"; fi
+     fi
+     
+     if [ "$role" = "client" ]; then
+        if [ "$(detect_os)" = "openwrt" ]; then
+            if ! type remove_client_openwrt >/dev/null 2>&1 && [ -f "$MODULES_DIR/client_openwrt.sh" ]; then
+                source "$MODULES_DIR/client_openwrt.sh"
+            fi
+        else
+            if ! type remove_client_linux >/dev/null 2>&1 && [ -f "$MODULES_DIR/client.sh" ]; then
+                source "$MODULES_DIR/client.sh"
+            fi
+        fi
+     fi
+
      case $role in
-        "server") remove_server ;;
+        "server") 
+            if type remove_server >/dev/null 2>&1; then
+                remove_server
+            else
+                echo "Error: function/module 'remove_server' not found. Check install."
+            fi
+            ;;
         "client") 
-            if [ "$(detect_os)" = "openwrt" ]; then remove_client_openwrt; else remove_client_linux; fi
+            if [ "$(detect_os)" = "openwrt" ]; then 
+                remove_client_openwrt
+            else 
+                remove_client_linux
+            fi
             ;;
      esac
      exit 0
