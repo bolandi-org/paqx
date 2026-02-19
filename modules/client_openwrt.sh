@@ -204,19 +204,33 @@ configure_client_openwrt() {
 # --- Uninstall ---
 
 remove_client_openwrt() {
-    echo -e "${RED}${BOLD}WARNING: This will remove PaqX Client completely.${NC}"
+    echo -e "${RED}${BOLD}WARNING: This will COMPLETELY remove PaqX Client.${NC}"
+    echo ""
+    echo "  This will remove:"
+    echo "  - PaqX service (init.d)"
+    echo "  - paqet binary"
+    echo "  - All configuration files"
+    echo "  - paqx script"
+    echo ""
     read -p "Are you sure? (y/N): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then return; fi
     
+    # 1. Stop and remove service
     log_info "Stopping service..."
-    /etc/init.d/paqx stop
-    /etc/init.d/paqx disable
+    /etc/init.d/paqx stop 2>/dev/null || true
+    /etc/init.d/paqx disable 2>/dev/null || true
     rm -f "$SERVICE_FILE_OPENWRT"
     
+    # 2. Kill any remaining paqet processes
+    pkill -f "paqet" 2>/dev/null || true
+    killall paqet 2>/dev/null || true
+    
+    # 3. Remove files
     log_info "Removing files..."
     rm -f "$BINARY_PATH"
     rm -rf "$CONF_DIR"
     rm -rf "$PAQX_ROOT"
     
-    log_success "PaqX Client uninstalled."
+    echo ""
+    log_success "PaqX Client completely uninstalled."
 }

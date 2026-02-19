@@ -201,21 +201,49 @@ configure_client_linux() {
 # --- Uninstall ---
 
 remove_client_linux() {
-    echo -e "${RED}${BOLD}WARNING: This will remove PaqX Client completely.${NC}"
+    echo -e "${RED}${BOLD}WARNING: This will COMPLETELY remove PaqX Client.${NC}"
+    echo ""
+    echo "  This will remove:"
+    echo "  - PaqX service (systemd)"
+    echo "  - paqet binary"
+    echo "  - All configuration files"
+    echo "  - Kernel optimizations"
+    echo "  - paqx script"
+    echo ""
     read -p "Are you sure? (y/N): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then return; fi
     
+    # 1. Stop and remove service
     log_info "Stopping service..."
-    systemctl stop paqx
-    systemctl disable paqx
+    systemctl stop paqx 2>/dev/null || true
+    systemctl disable paqx 2>/dev/null || true
     rm -f "$SERVICE_FILE_LINUX"
-    systemctl daemon-reload
+    systemctl daemon-reload 2>/dev/null || true
     
+    # 2. Remove kernel optimizations
+    log_info "Reverting kernel optimizations..."
+    rm -f /etc/sysctl.d/99-paqx.conf 2>/dev/null
+    sed -i '/net.core.default_qdisc=fq/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.ipv4.tcp_congestion_control=bbr/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.ipv4.tcp_fastopen=3/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/fs.file-max = 1000000/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.core.rmem_max = 33554432/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.core.wmem_max = 33554432/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.core.rmem_default = 16777216/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.core.wmem_default = 16777216/d' /etc/sysctl.conf 2>/dev/null || true
+    sysctl -p >/dev/null 2>&1 || true
+    
+    # 3. Kill any remaining paqet processes
+    pkill -f "paqet" 2>/dev/null || true
+    
+    # 4. Remove files
     log_info "Removing files..."
     rm -f "$BINARY_PATH"
     rm -rf "$CONF_DIR"
     rm -rf "$PAQX_ROOT"
     rm -f "/usr/bin/paqx"
+    rm -f "/usr/local/bin/paqx"
     
-    log_success "PaqX Client uninstalled."
+    echo ""
+    log_success "PaqX Client completely uninstalled."
 }

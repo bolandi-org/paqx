@@ -415,21 +415,75 @@ EOF
 # --- Uninstall ---
 
 remove_server() {
-    echo -e "${RED}${BOLD}WARNING: This will remove PaqX Server completely.${NC}"
+    echo -e "${RED}${BOLD}WARNING: This will COMPLETELY remove PaqX Server.${NC}"
+    echo ""
+    echo "  This will remove:"
+    echo "  - PaqX service (systemd)"
+    echo "  - paqet binary"
+    echo "  - All configuration files"
+    echo "  - Firewall/iptables rules"
+    echo "  - Kernel optimizations"
+    echo "  - paqx script"
+    echo ""
     read -p "Are you sure? (y/N): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then return; fi
     
+    # 1. Stop and remove service
     log_info "Stopping service..."
-    systemctl stop paqx
-    systemctl disable paqx
+    systemctl stop paqx 2>/dev/null || true
+    systemctl disable paqx 2>/dev/null || true
     rm -f "$SERVICE_FILE_LINUX"
-    systemctl daemon-reload
+    systemctl daemon-reload 2>/dev/null || true
     
+    # 2. Remove firewall rules
+    log_info "Removing firewall rules..."
+    local port=$(grep 'addr: ":' "$CONF_FILE" 2>/dev/null | head -1 | grep -oP ':\K[0-9]+')
+    if [ -n "$port" ]; then
+        # firewalld
+        if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+            firewall-cmd --direct --remove-rule ipv4 raw PREROUTING 0 -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
+            firewall-cmd --direct --remove-rule ipv4 raw OUTPUT 0 -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
+            firewall-cmd --direct --remove-rule ipv4 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
+            firewall-cmd --permanent --direct --remove-rule ipv4 raw PREROUTING 0 -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
+            firewall-cmd --permanent --direct --remove-rule ipv4 raw OUTPUT 0 -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
+            firewall-cmd --permanent --direct --remove-rule ipv4 mangle OUTPUT 0 -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
+            log_success "Firewalld rules removed."
+        fi
+        
+        # iptables
+        if command -v iptables >/dev/null 2>&1; then
+            iptables -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
+            iptables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
+            iptables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
+            log_success "IPTables rules removed."
+        fi
+    fi
+    
+    # 3. Remove kernel optimizations
+    log_info "Reverting kernel optimizations..."
+    rm -f /etc/sysctl.d/99-paqx.conf 2>/dev/null
+    # Clean entries added to sysctl.conf
+    sed -i '/net.core.default_qdisc=fq/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.ipv4.tcp_congestion_control=bbr/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.ipv4.tcp_fastopen=3/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/fs.file-max = 1000000/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.core.rmem_max = 33554432/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.core.wmem_max = 33554432/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.core.rmem_default = 16777216/d' /etc/sysctl.conf 2>/dev/null || true
+    sed -i '/net.core.wmem_default = 16777216/d' /etc/sysctl.conf 2>/dev/null || true
+    sysctl -p >/dev/null 2>&1 || true
+    
+    # 4. Kill any remaining paqet processes
+    pkill -f "paqet" 2>/dev/null || true
+    
+    # 5. Remove files
     log_info "Removing files..."
     rm -f "$BINARY_PATH"
     rm -rf "$CONF_DIR"
     rm -rf "$PAQX_ROOT"
     rm -f "/usr/bin/paqx"
+    rm -f "/usr/local/bin/paqx"
     
-    log_success "PaqX Server uninstalled."
+    echo ""
+    log_success "PaqX Server completely uninstalled."
 }
