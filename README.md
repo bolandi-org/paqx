@@ -29,17 +29,17 @@ Select **Server** on first run. The installer auto-configures firewall, kernel o
 ### 🐧 Linux
 
 ```bash
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/setup.sh" -o /tmp/paqx.sh && bash /tmp/paqx.sh
 ```
 
-Select **Client** on first run. Requires server IP:Port and encryption key.
+> After first setup, use `paqx` command to manage.
 
 ### 🪟 Windows
 
 Open **PowerShell as Administrator** and run:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
+Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/windows/setup.ps1 -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
 ```
 
 > **Note:** [Npcap](https://npcap.com/#download) is required. The script will detect if it's missing and offer to download it automatically.
@@ -49,7 +49,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercont
 SSH into your router and run:
 
 ```sh
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
 ```
 
 > After first setup, use `paqx` command to manage.
@@ -76,6 +76,7 @@ curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/openwrt/setup.s
 | **SOCKS5 Proxy** | Configurable local port (default `1080`) |
 | **Service Management** | `systemd` (Linux) · `procd` (OpenWrt) · Scheduled Task (Windows) |
 | **Protocol Modes** | `Simple` (key only) · `Automatic` (optimized defaults) |
+| **Firewall Rules** | `NOTRACK` + `RST DROP` for client→server traffic (Linux) |
 | **Refresh Network** | Switch between adapters without reinstalling |
 
 ### Management Panel
@@ -107,20 +108,22 @@ Settings menu:
 
 ```
 paqx/
-├── paqx                     # Linux entry point (Server & Client)
+├── server/
+│   └── setup.sh             # Linux server (standalone)
+├── clients/
+│   ├── linux/
+│   │   └── setup.sh         # Linux client (standalone)
+│   ├── windows/
+│   │   └── setup.ps1        # Windows client (standalone)
+│   └── openwrt/
+│       └── setup.sh         # OpenWrt client (standalone)
 ├── lib/
 │   ├── core.sh              # Constants, colors, shared helpers
 │   ├── utils.sh             # Logging, arch detection, download
 │   ├── network.sh           # IP/interface/gateway detection
 │   └── crypto.sh            # Key generation
-├── modules/
-│   ├── server.sh            # Server install, config, firewall
-│   ├── client.sh            # Linux client
-│   └── client_openwrt.sh    # OpenWrt client (modular)
-├── windows/
-│   └── setup.ps1            # Windows client (standalone)
-└── openwrt/
-    └── setup.sh             # OpenWrt client (standalone)
+└── sample/
+    └── paqctl.sh            # Reference implementation (full-featured)
 ```
 
 ---
@@ -136,7 +139,7 @@ paqx/
 
 ## Uninstall
 
-### Linux
+### Linux (Server & Client)
 
 Select **Uninstall** from the panel, or manually:
 
@@ -144,7 +147,7 @@ Select **Uninstall** from the panel, or manually:
 systemctl stop paqx && systemctl disable paqx
 rm -f /etc/systemd/system/paqx.service /etc/sysctl.d/99-paqx.conf
 rm -rf /etc/paqx /usr/local/paqx /usr/bin/paqx /usr/bin/paqet
-sysctl --system
+systemctl daemon-reload && sysctl --system
 ```
 
 ### Windows
@@ -187,17 +190,17 @@ curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/b
 ### 🐧 لینوکس
 
 ```bash
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/setup.sh" -o /tmp/paqx.sh && bash /tmp/paqx.sh
 ```
 
-> در اولین اجرا **کلاینت** را انتخاب کنید. آدرس سرور و کلید رمزنگاری لازم است.
+> بعد از نصب اولیه، با دستور `paqx` مدیریت کنید.
 
 ### 🪟 ویندوز
 
 پاورشل را **به عنوان ادمین** باز کنید:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercontent.com/bolandi-org/paqx/main/windows/setup.ps1 -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
+Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/windows/setup.ps1 -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
 ```
 
 > Npcap لازم است. اسکریپت در صورت نبود آن، دانلود خودکار پیشنهاد می‌دهد.
@@ -207,7 +210,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercont
 از طریق SSH به روتر وصل شوید:
 
 ```sh
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
+curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
 ```
 
 > بعد از نصب اولیه، با دستور `paqx` مدیریت کنید.

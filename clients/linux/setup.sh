@@ -2,158 +2,403 @@
 # PaqX Client for Linux - Standalone Setup & Management
 # https://github.com/bolandi-org/paqx
 
-PAQX_ROOT="/usr/local/paqx"
-LIB_DIR="$PAQX_ROOT/lib"
+set -eo pipefail
 
-# -- Bootstrap ---------------------------------------------------------------
-bootstrap() {
-    if [ ! -f "$LIB_DIR/core.sh" ]; then
-        echo "Downloading PaqX..."
-        [ "$(id -u)" != "0" ] && { echo "Error: Need root."; exit 1; }
-        mkdir -p "$PAQX_ROOT"
+# -- Constants ---------------------------------------------------------------
+INSTALL_DIR="/usr/bin"
+CONF_DIR="/etc/paqx"
+CONF_FILE="$CONF_DIR/config.yaml"
+SERVICE_FILE="/etc/systemd/system/paqx.service"
+BINARY_PATH="$INSTALL_DIR/paqet"
+LOG_FILE="/var/log/paqx.log"
+REPO_OWNER="hanselime"
+REPO_NAME="paqet"
+SCRIPT_PATH="/usr/bin/paqx"
 
-        if command -v apt-get >/dev/null; then
-            apt-get update -y >/dev/null 2>&1 && apt-get install -y curl tar >/dev/null 2>&1
-        elif command -v yum >/dev/null; then
-            yum install -y curl tar >/dev/null 2>&1
-        elif command -v dnf >/dev/null; then
-            dnf install -y curl tar >/dev/null 2>&1
-        fi
+# -- Colors ------------------------------------------------------------------
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+GRAY='\033[0;37m'
+NC='\033[0m'
 
-        curl -L "https://github.com/bolandi-org/paqx/archive/refs/heads/main.tar.gz" -o /tmp/paqx.tar.gz
-        [ $? -ne 0 ] && { echo "Error: Download failed."; exit 1; }
-        tar -xzf /tmp/paqx.tar.gz -C "$PAQX_ROOT" --strip-components=1
-        rm -f /tmp/paqx.tar.gz
+# -- Helpers -----------------------------------------------------------------
+write_ok()   { echo -e "${GREEN}[+] $1${NC}"; }
+write_err()  { echo -e "${RED}[!] $1${NC}"; }
+write_info() { echo -e "${YELLOW}[*] $1${NC}"; }
+write_warn() { echo -e "${YELLOW}[!] $1${NC}"; }
 
-        [ ! -f "$LIB_DIR/core.sh" ] && { echo "Error: Bootstrap failed."; exit 1; }
-        echo "Bootstrap complete."
+# -- Root Check --------------------------------------------------------------
+if [ "$(id -u)" != "0" ]; then
+    write_err "Must run as root!"
+    exit 1
+fi
+
+# -- Architecture Detection --------------------------------------------------
+detect_arch() {
+    local arch
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64) echo "amd64" ;;
+        aarch64|arm64) echo "arm64" ;;
+        armv7l|armv7|armhf) echo "arm32" ;;
+        mips64el|mips64le) echo "mips64le" ;;
+        mips64) echo "mips64" ;;
+        mipsel|mipsle) echo "mipsle" ;;
+        mips) echo "mips" ;;
+        *)
+            write_err "Unsupported architecture: $arch"
+            exit 1
+            ;;
+    esac
+}
+
+# -- Package Manager Detection -----------------------------------------------
+detect_pkg_manager() {
+    if command -v apt-get &>/dev/null; then echo "apt"
+    elif command -v dnf &>/dev/null; then echo "dnf"
+    elif command -v yum &>/dev/null; then echo "yum"
+    elif command -v pacman &>/dev/null; then echo "pacman"
+    elif command -v zypper &>/dev/null; then echo "zypper"
+    elif command -v apk &>/dev/null; then echo "apk"
+    else echo "unknown"
     fi
 }
 
-bootstrap
+install_package() {
+    local package="$1"
+    local pkg_mgr
+    pkg_mgr=$(detect_pkg_manager)
 
-source "$LIB_DIR/core.sh"
-source "$LIB_DIR/utils.sh"
-source "$LIB_DIR/network.sh"
+    case "$pkg_mgr" in
+        apt) apt-get install -y -q "$package" 2>/dev/null ;;
+        dnf) dnf install -y -q "$package" 2>/dev/null ;;
+        yum) yum install -y -q "$package" 2>/dev/null ;;
+        pacman) pacman -Sy --noconfirm "$package" 2>/dev/null ;;
+        zypper) zypper install -y -n "$package" 2>/dev/null ;;
+        apk) apk add --no-cache "$package" 2>/dev/null ;;
+        *) write_warn "Unknown package manager. Please install $package manually."; return 1 ;;
+    esac
+}
 
-# -- Download Binary ---------------------------------------------------------
-download_binary_core() {
-    local arch=$(detect_arch)
-    local os_type="linux"
-    log_info "Fetching latest binary release..."
-    local b_owner="hanselime"
-    local b_name="paqet"
-    local release_json=$(curl -sL "https://api.github.com/repos/$b_owner/$b_name/releases/latest")
-    local tag=$(echo "$release_json" | grep -oP '"tag_name": "\K(.*)(?=")')
-    local dl_url=""
-    if [ -n "$tag" ]; then
-        dl_url=$(echo "$release_json" | grep "browser_download_url" | grep "$os_type" | grep "$arch" | cut -d '"' -f 4 | head -n 1)
-        if [ -z "$dl_url" ]; then
-            local clean_ver="${tag#v}"
-            dl_url="https://github.com/$b_owner/$b_name/releases/download/$tag/paqet-$os_type-$arch-$clean_ver.tar.gz"
+# -- Dependencies ------------------------------------------------------------
+install_deps() {
+    write_info "Checking dependencies..."
+
+    if ! command -v curl &>/dev/null; then
+        install_package curl || write_warn "Could not install curl"
+    fi
+
+    if ! command -v tar &>/dev/null; then
+        install_package tar || write_warn "Could not install tar"
+    fi
+
+    if ! command -v ip &>/dev/null; then
+        local pkg_mgr
+        pkg_mgr=$(detect_pkg_manager)
+        case "$pkg_mgr" in
+            apt) install_package iproute2 ;;
+            dnf|yum) install_package iproute ;;
+            *) install_package iproute2 ;;
+        esac
+    fi
+
+    # libpcap
+    if ! ldconfig -p 2>/dev/null | grep -q libpcap; then
+        write_info "Installing libpcap..."
+        local pkg_mgr
+        pkg_mgr=$(detect_pkg_manager)
+        case "$pkg_mgr" in
+            apt) install_package libpcap-dev ;;
+            dnf|yum) install_package libpcap-devel ;;
+            pacman) install_package libpcap ;;
+            zypper) install_package libpcap-devel ;;
+            apk) install_package libpcap-dev ;;
+            *) write_warn "Please install libpcap manually" ;;
+        esac
+
+        # Fedora/RHEL: ensure libpcap.so.1 symlink
+        if [ "$(detect_pkg_manager)" = "dnf" ] || [ "$(detect_pkg_manager)" = "yum" ]; then
+            if ! ldconfig -p 2>/dev/null | grep -q 'libpcap\.so\.1 '; then
+                local _pcap_lib
+                _pcap_lib=$(find /usr/lib64 /usr/lib /lib64 /lib -name 'libpcap.so.*' -type f 2>/dev/null | head -1)
+                if [ -n "$_pcap_lib" ]; then
+                    local _libdir
+                    _libdir=$(dirname "$_pcap_lib")
+                    [ ! -e "${_libdir}/libpcap.so.1" ] && ln -sf "$_pcap_lib" "${_libdir}/libpcap.so.1"
+                    ldconfig 2>/dev/null || true
+                fi
+            fi
         fi
     else
-        dl_url="https://github.com/$b_owner/$b_name/releases/latest/download/paqet-$os_type-$arch.tar.gz"
+        write_ok "libpcap already installed."
     fi
-    log_info "Downloading: $dl_url"
-    curl -L -f -o /tmp/paqet.tar.gz "$dl_url"
-    [ $? -ne 0 ] && { log_error "Download failed."; return 1; }
-    tar -xzf /tmp/paqet.tar.gz -C /tmp
-    local bin=$(find /tmp -type f -name "paqet*" ! -name "*.tar.gz" | head -n 1)
-    if [ -n "$bin" ] && [ -f "$bin" ]; then
-        mkdir -p "$(dirname "$BINARY_PATH")"
-        chmod +x "$bin"
-        mv "$bin" "$BINARY_PATH"
-        rm -f /tmp/paqet.tar.gz
-        log_success "Core binary installed."
+
+    write_ok "All dependencies ready."
+}
+
+# -- Network Detection -------------------------------------------------------
+get_network_info() {
+    # Interface via default route
+    local _route_line
+    _route_line=$(ip route show default 2>/dev/null | head -1)
+    if [[ "$_route_line" == *" via "* ]]; then
+        NET_IFACE=$(echo "$_route_line" | awk '{print $5}')
+    elif [[ "$_route_line" == *" dev "* ]]; then
+        # OpenVZ/direct format
+        NET_IFACE=$(echo "$_route_line" | awk '{print $3}')
+    fi
+
+    # Validate interface exists
+    if [ -n "$NET_IFACE" ] && ! ip link show "$NET_IFACE" &>/dev/null; then
+        NET_IFACE=""
+    fi
+
+    if [ -z "$NET_IFACE" ]; then
+        NET_IFACE=$(ip -o link show 2>/dev/null | awk -F': ' '{gsub(/ /,"",$2); print $2}' | { grep -vE '^(lo|docker[0-9]|br-|veth|virbr|tun|tap|wg)' || true; } | head -1)
+    fi
+
+    # Local IP
+    NET_IP=""
+    if [ -n "$NET_IFACE" ]; then
+        NET_IP=$( (ip -4 addr show "$NET_IFACE" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1) || true )
+    fi
+    if [ -z "$NET_IP" ]; then
+        NET_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+        [ -z "$NET_IP" ] && NET_IP=$(ip -4 addr show scope global 2>/dev/null | awk '/inet /{gsub(/\/.*/, "", $2); print $2; exit}')
+    fi
+
+    # Gateway IP
+    NET_GW=""
+    if [[ "$_route_line" == *" via "* ]]; then
+        NET_GW=$(echo "$_route_line" | awk '{print $3}')
+    fi
+
+    # Gateway MAC
+    NET_MAC=""
+    if [ -n "$NET_GW" ]; then
+        NET_MAC=$(ip neigh show "$NET_GW" 2>/dev/null | awk '/lladdr/{print $5; exit}')
+        if [ -z "$NET_MAC" ]; then
+            ping -c 1 -W 2 "$NET_GW" &>/dev/null || true
+            sleep 1
+            NET_MAC=$(ip neigh show "$NET_GW" 2>/dev/null | awk '/lladdr/{print $5; exit}')
+        fi
+        if [ -z "$NET_MAC" ] && command -v arp &>/dev/null; then
+            NET_MAC=$(arp -n "$NET_GW" 2>/dev/null | { grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' || true; } | head -1)
+        fi
+    fi
+}
+
+# -- Binary Download ---------------------------------------------------------
+download_binary() {
+    local bin_arch
+    bin_arch=$(detect_arch)
+    write_info "Architecture: $bin_arch"
+
+    write_info "Fetching latest release..."
+    local response
+    response=$(curl -sL --retry 3 --max-time 15 -A "paqx-manager" "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest")
+    local tag
+    tag=$(echo "$response" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | grep -o '"[^"]*"$' | tr -d '"')
+
+    if [ -z "$tag" ]; then
+        write_err "Could not fetch version info."
+        return 1
+    fi
+    write_info "Latest version: $tag"
+
+    local clean_ver="${tag#v}"
+    local dl_url=""
+    # Try to find asset URL from API response first
+    dl_url=$(echo "$response" | grep "browser_download_url" | grep "linux" | grep "$bin_arch" | cut -d '"' -f 4 | head -n 1)
+    if [ -z "$dl_url" ]; then
+        dl_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$tag/paqet-linux-$bin_arch-$clean_ver.tar.gz"
+    fi
+
+    write_info "Downloading..."
+    local tmp_file
+    tmp_file=$(mktemp "/tmp/paqet-download-XXXXXXXX.tar.gz")
+
+    local download_ok=false
+    if curl -sL --max-time 180 --retry 3 --retry-delay 5 --fail -o "$tmp_file" "$dl_url" 2>/dev/null; then
+        download_ok=true
+    elif command -v wget &>/dev/null; then
+        write_info "curl failed, trying wget..."
+        rm -f "$tmp_file"
+        if wget -q --timeout=180 --tries=3 -O "$tmp_file" "$dl_url" 2>/dev/null; then
+            download_ok=true
+        fi
+    fi
+
+    if [ "$download_ok" != "true" ]; then
+        write_err "Download failed."
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    # Validate download size
+    local fsize
+    fsize=$(stat -c%s "$tmp_file" 2>/dev/null || wc -c < "$tmp_file" 2>/dev/null || echo 0)
+    if [ "$fsize" -lt 1000 ]; then
+        write_err "Downloaded file too small ($fsize bytes). Download may have failed."
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    local tmp_extract
+    tmp_extract=$(mktemp -d "/tmp/paqet-extract-XXXXXXXX")
+    tar -xzf "$tmp_file" -C "$tmp_extract" 2>/dev/null
+    if [ $? -ne 0 ]; then
+        write_err "Failed to extract archive."
+        rm -f "$tmp_file"
+        rm -rf "$tmp_extract"
+        return 1
+    fi
+
+    # Find binary
+    local new_bin
+    new_bin=$(find "$tmp_extract" -maxdepth 2 -type f \( -name "paqet" -o -name "paqet_linux_*" \) ! -name "*.tar.gz" | head -n1)
+    if [ -z "$new_bin" ]; then
+        new_bin=$(find "$tmp_extract" -name "paqet*" -type f -executable 2>/dev/null | head -1)
+    fi
+    if [ -z "$new_bin" ]; then
+        new_bin=$(find "$tmp_extract" -name "paqet*" -type f 2>/dev/null | head -1)
+    fi
+
+    if [ -n "$new_bin" ]; then
+        mkdir -p "$INSTALL_DIR"
+        # Stop if running to avoid "Text file busy"
+        if pgrep -f "paqet run" &>/dev/null; then
+            write_info "Stopping paqet to update binary..."
+            pkill -f "paqet run" 2>/dev/null || true
+            sleep 1
+        fi
+        cp "$new_bin" "$BINARY_PATH"
+        chmod +x "$BINARY_PATH"
+        rm -f "$tmp_file"
+        rm -rf "$tmp_extract"
+        write_ok "Binary installed: $tag"
+        return 0
     else
-        log_error "Binary not found in archive."
+        write_err "Binary not found in archive."
+        rm -f "$tmp_file"
+        rm -rf "$tmp_extract"
         return 1
     fi
 }
 
-update_core() {
-    log_info "Updating Paqet binary..."
-    download_binary_core
-    [ $? -eq 0 ] && { log_info "Restarting..."; systemctl restart paqx; }
+# -- Firewall Rules ----------------------------------------------------------
+apply_firewall_rules() {
+    local server_addr="$1"
+    [ -z "$server_addr" ] && return 0
+
+    local s_ip="${server_addr%:*}"
+    local s_port="${server_addr##*:}"
+    [ -z "$s_ip" ] || [ -z "$s_port" ] && return 0
+
+    write_info "Applying firewall rules..."
+
+    # Load kernel modules
+    modprobe iptable_raw 2>/dev/null || true
+    modprobe iptable_mangle 2>/dev/null || true
+
+    local TAG="paqx"
+
+    # NOTRACK rules for client -> server traffic
+    iptables -t raw -C PREROUTING -s "$s_ip" -p tcp --sport "$s_port" -m comment --comment "$TAG" -j NOTRACK 2>/dev/null || \
+    iptables -t raw -A PREROUTING -s "$s_ip" -p tcp --sport "$s_port" -m comment --comment "$TAG" -j NOTRACK 2>/dev/null || true
+
+    iptables -t raw -C OUTPUT -d "$s_ip" -p tcp --dport "$s_port" -m comment --comment "$TAG" -j NOTRACK 2>/dev/null || \
+    iptables -t raw -A OUTPUT -d "$s_ip" -p tcp --dport "$s_port" -m comment --comment "$TAG" -j NOTRACK 2>/dev/null || true
+
+    # Drop RST packets to server
+    iptables -t mangle -C OUTPUT -d "$s_ip" -p tcp --dport "$s_port" --tcp-flags RST RST -m comment --comment "$TAG" -j DROP 2>/dev/null || \
+    iptables -t mangle -A OUTPUT -d "$s_ip" -p tcp --dport "$s_port" --tcp-flags RST RST -m comment --comment "$TAG" -j DROP 2>/dev/null || true
+
+    # IPv6 (best effort)
+    if command -v ip6tables &>/dev/null; then
+        ip6tables -t raw -A PREROUTING -p tcp --sport "$s_port" -m comment --comment "$TAG" -j NOTRACK 2>/dev/null || true
+        ip6tables -t raw -A OUTPUT -p tcp --dport "$s_port" -m comment --comment "$TAG" -j NOTRACK 2>/dev/null || true
+        ip6tables -t mangle -A OUTPUT -p tcp --dport "$s_port" --tcp-flags RST RST -m comment --comment "$TAG" -j DROP 2>/dev/null || true
+    fi
+
+    # Persist rules
+    if command -v netfilter-persistent &>/dev/null; then
+        netfilter-persistent save 2>/dev/null || true
+    elif command -v iptables-save &>/dev/null; then
+        if [ -d /etc/iptables ]; then
+            iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+            command -v ip6tables-save &>/dev/null && ip6tables-save > /etc/iptables/rules.v6 2>/dev/null || true
+        elif [ -d /etc/sysconfig ]; then
+            iptables-save > /etc/sysconfig/iptables 2>/dev/null || true
+        fi
+    fi
+
+    write_ok "Firewall rules applied."
 }
 
-downgrade_core() {
-    local b_owner="hanselime"
-    local b_name="paqet"
-    local arch=$(detect_arch)
-    log_info "Fetching versions..."
-    local releases_json=$(curl -sL "https://api.github.com/repos/$b_owner/$b_name/releases?per_page=10")
-    local tags=($(echo "$releases_json" | grep -oP '"tag_name": "\K[^"]+'))
-    [ ${#tags[@]} -eq 0 ] && { log_error "Could not fetch versions."; return 1; }
-    echo -e "\n${BOLD}--- Select Version ---${NC}"
-    for i in "${!tags[@]}"; do echo "$((i+1))) ${tags[$i]}"; done
-    echo "0) Cancel"
-    read -p "Select: " v_opt
-    [ "$v_opt" = "0" ] || [ -z "$v_opt" ] && return
-    local idx=$((v_opt-1))
-    [ $idx -lt 0 ] || [ $idx -ge ${#tags[@]} ] && { log_error "Invalid."; return 1; }
-    local sel_tag="${tags[$idx]}"
-    local clean_ver="${sel_tag#v}"
-    local dl_url="https://github.com/$b_owner/$b_name/releases/download/$sel_tag/paqet-linux-$arch-$clean_ver.tar.gz"
-    log_info "Downloading $sel_tag..."
-    curl -L -f -o /tmp/paqet.tar.gz "$dl_url"
-    [ $? -ne 0 ] && { log_error "Download failed."; return 1; }
-    tar -xzf /tmp/paqet.tar.gz -C /tmp
-    local bin=$(find /tmp -type f -name "paqet*" ! -name "*.tar.gz" | head -n 1)
-    if [ -n "$bin" ]; then
-        chmod +x "$bin"; mv "$bin" "$BINARY_PATH"; rm -f /tmp/paqet.tar.gz
-        log_success "Downgraded to $sel_tag."
-        systemctl restart paqx
-    else
-        log_error "Binary not found."
+remove_firewall_rules() {
+    local TAG="paqx"
+
+    # Remove all rules tagged with paqx
+    while iptables -t raw -D PREROUTING -m comment --comment "$TAG" -j NOTRACK 2>/dev/null; do :; done
+    while iptables -t raw -D OUTPUT -m comment --comment "$TAG" -j NOTRACK 2>/dev/null; do :; done
+    while iptables -t mangle -D OUTPUT -m comment --comment "$TAG" -j DROP 2>/dev/null; do :; done
+
+    if command -v ip6tables &>/dev/null; then
+        while ip6tables -t raw -D PREROUTING -m comment --comment "$TAG" -j NOTRACK 2>/dev/null; do :; done
+        while ip6tables -t raw -D OUTPUT -m comment --comment "$TAG" -j NOTRACK 2>/dev/null; do :; done
+        while ip6tables -t mangle -D OUTPUT -m comment --comment "$TAG" -j DROP 2>/dev/null; do :; done
     fi
 }
 
-# -- Install Client ----------------------------------------------------------
+# -- Install -----------------------------------------------------------------
 install_client() {
-    echo -e "\n${BOLD}--- Client Configuration ---${NC}"
-    read -p "  Server (IP:Port): " server_addr
-    [ -z "$server_addr" ] && { log_error "Server address required!"; return 1; }
+    # 1. Dependencies
+    install_deps
 
-    read -p "  Encryption Key: " enc_key
-    [ -z "$enc_key" ] && { log_error "Key required!"; return 1; }
+    # 2. Binary
+    if [ ! -f "$BINARY_PATH" ]; then
+        download_binary || return 1
+    fi
+
+    # 3. Client config
+    echo ""
+    echo -e "${WHITE}--- Client Configuration ---${NC}"
+    printf "  Server (IP:Port): "
+    read -r server_addr
+    if [ -z "$server_addr" ]; then write_err "Server address required!"; return 1; fi
+
+    printf "  Encryption Key: "
+    read -r enc_key
+    if [ -z "$enc_key" ]; then write_err "Key required!"; return 1; fi
 
     echo ""
     echo "  1) Simple (Fast mode, key only - recommended)"
     echo "  2) Automatic (Full optimized settings)"
-    read -p "  Select [1]: " mode
-    mode=${mode:-1}
+    printf "  Select [1]: "
+    read -r mode
+    [ -z "$mode" ] && mode="1"
 
-    read -p "  Local SOCKS5 Port [1080]: " local_port
-    local_port=${local_port:-1080}
+    printf "  Local SOCKS5 Port [1080]: "
+    read -r local_port
+    [ -z "$local_port" ] && local_port="1080"
 
-    # Network detection
-    log_info "Detecting network..."
-    IFACE=$(scan_interface)
-    LOCAL_IP=$(ip -4 addr show "$IFACE" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
-    [ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    # 4. Network detection
+    write_info "Detecting network..."
+    get_network_info
+    write_ok "Interface: $NET_IFACE"
+    write_ok "Local IP: $NET_IP"
+    write_ok "Gateway MAC: $NET_MAC"
 
-    local gw_ip=$(ip route show default | awk '/default/ {print $3}')
-    GW_MAC=""
-    if [ -n "$gw_ip" ]; then
-        GW_MAC=$(ip neigh show "$gw_ip" 2>/dev/null | awk '/lladdr/{print $5; exit}')
-        if [ -z "$GW_MAC" ]; then
-            ping -c 1 -W 2 "$gw_ip" >/dev/null 2>&1 || true
-            sleep 1
-            GW_MAC=$(ip neigh show "$gw_ip" 2>/dev/null | awk '/lladdr/{print $5; exit}')
-        fi
-    fi
-
-    log_success "Interface: $IFACE"
-    log_success "Local IP: $LOCAL_IP"
-    log_success "Gateway MAC: $GW_MAC"
-
-    # Generate config
+    # 5. Generate config
     mkdir -p "$CONF_DIR"
 
     if [ "$mode" = "2" ]; then
-        cat > "$CONF_FILE" <<EOF
+        cat > "$CONF_FILE" << EOF
 role: "client"
 
 log:
@@ -161,21 +406,28 @@ log:
 
 socks5:
   - listen: "127.0.0.1:${local_port}"
+    username: ""
+    password: ""
 
 network:
-  interface: "${IFACE}"
+  interface: "${NET_IFACE}"
   ipv4:
-    addr: "${LOCAL_IP}:0"
-    router_mac: "${GW_MAC}"
+    addr: "${NET_IP}:0"
+    router_mac: "${NET_MAC}"
+
+  tcp:
+    local_flag: ["PA"]
+    remote_flag: ["PA"]
 
 server:
   addr: "${server_addr}"
 
 transport:
   protocol: "kcp"
+  conn: 1
+
   kcp:
     mode: "fast"
-    conn: 1
     nodelay: 1
     interval: 10
     resend: 2
@@ -193,7 +445,7 @@ transport:
     pshard: 3
 EOF
     else
-        cat > "$CONF_FILE" <<EOF
+        cat > "$CONF_FILE" << EOF
 role: "client"
 
 log:
@@ -201,54 +453,78 @@ log:
 
 socks5:
   - listen: "127.0.0.1:${local_port}"
+    username: ""
+    password: ""
 
 network:
-  interface: "${IFACE}"
+  interface: "${NET_IFACE}"
   ipv4:
-    addr: "${LOCAL_IP}:0"
-    router_mac: "${GW_MAC}"
+    addr: "${NET_IP}:0"
+    router_mac: "${NET_MAC}"
+
+  tcp:
+    local_flag: ["PA"]
+    remote_flag: ["PA"]
 
 server:
   addr: "${server_addr}"
 
 transport:
   protocol: "kcp"
+  conn: 1
+
   kcp:
     mode: "fast"
     key: "${enc_key}"
 EOF
     fi
 
-    log_success "Config saved: $CONF_FILE"
+    chmod 600 "$CONF_FILE"
+    write_ok "Config saved: $CONF_FILE"
 
-    # Create systemd service
-    cat > "$SERVICE_FILE_LINUX" <<EOF
+    # 6. Firewall rules
+    apply_firewall_rules "$server_addr"
+
+    # 7. Create systemd service
+    write_info "Creating systemd service..."
+    cat > "$SERVICE_FILE" << EOF
 [Unit]
 Description=PaqX Client
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 ExecStart=$BINARY_PATH run -c $CONF_FILE
-Restart=always
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=paqx
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable paqx
+    systemctl enable paqx 2>/dev/null
     systemctl start paqx
+    sleep 2
 
     echo ""
-    log_success "PaqX Client is running!"
+    write_ok "PaqX Client is running!"
     echo -e "  SOCKS5 Proxy: ${YELLOW}127.0.0.1:${local_port}${NC}"
     echo ""
-    read -n1 -s -r -p "Press any key..."
+    printf "Press Enter to continue..."
+    read -r dummy
 }
 
-# -- Client Panel ------------------------------------------------------------
-panel_client() {
+# -- Dashboard ---------------------------------------------------------------
+show_dashboard() {
     while true; do
         # Read config
         local srv_addr=""
@@ -262,64 +538,147 @@ panel_client() {
                 esac
                 if [ "$section" = "server" ]; then
                     case "$line" in
-                        *addr:*) srv_addr=$(echo "$line" | grep -oP '"[^"]*"' | tr -d '"') ;;
+                        *addr:*) srv_addr=$(echo "$line" | sed 's/.*"\(.*\)".*/\1/') ;;
                     esac
                 fi
                 case "$line" in
-                    *listen:*) socks_port=$(echo "$line" | grep -oP '"[^"]*"' | tr -d '"') ;;
+                    *listen:*) socks_port=$(echo "$line" | sed 's/.*"\(.*\)".*/\1/') ;;
                 esac
             done < "$CONF_FILE"
         fi
 
         # Status
         local is_running=false
-        systemctl is-active --quiet paqx && is_running=true
-        local is_enabled=$(systemctl is-enabled paqx 2>/dev/null)
-        local status_str=""; if $is_running; then status_str="Running"; else status_str="Stopped"; fi
-        local auto_str=""; [ "$is_enabled" = "enabled" ] && auto_str="Enabled" || auto_str="Disabled"
-        local max_len=${#srv_addr}; [ ${#socks_port} -gt $max_len ] && max_len=${#socks_port}
-        local card_w=$((max_len + 14)); [ $card_w -lt 38 ] && card_w=38
+        systemctl is-active --quiet paqx 2>/dev/null && is_running=true
+        local is_enabled
+        is_enabled=$(systemctl is-enabled paqx 2>/dev/null)
+
+        local status_text="Stopped"
+        local status_color="$RED"
+        $is_running && status_text="Running" && status_color="$GREEN"
+        local auto_text="Disabled"
+        local auto_color="$RED"
+        [ "$is_enabled" = "enabled" ] && auto_text="Enabled" && auto_color="$GREEN"
+
+        local max_len=${#srv_addr}
+        [ ${#socks_port} -gt $max_len ] && max_len=${#socks_port}
+        [ 12 -gt $max_len ] && max_len=12
+        local card_w=$((max_len + 16))
+        [ $card_w -lt 42 ] && card_w=42
         local border=$(printf '%0.s-' $(seq 1 $card_w))
 
         clear
-        echo -e "\n  ${BLUE}+===============================+${NC}"
+        echo ""
+        echo -e "  ${BLUE}+===============================+${NC}"
         echo -e "  ${BLUE}|     PaqX Client  (Linux)      |${NC}"
-        echo -e "  ${BLUE}+===============================+${NC}\n"
+        echo -e "  ${BLUE}+===============================+${NC}"
+        echo ""
         echo -e "  ${CYAN}+${border}+${NC}"
-        if $is_running; then
-            echo -e "  ${CYAN}|${NC} Status:  ${GREEN}${status_str}${NC}$(printf '%*s' $((card_w - ${#status_str} - 11)) '')${CYAN}|${NC}"
-        else
-            echo -e "  ${CYAN}|${NC} Status:  ${RED}${status_str}${NC}$(printf '%*s' $((card_w - ${#status_str} - 11)) '')${CYAN}|${NC}"
-        fi
-        echo -e "  ${CYAN}|${NC} Auto:    $([ "$is_enabled" = "enabled" ] && echo "${GREEN}" || echo "${RED}")${auto_str}${NC}$(printf '%*s' $((card_w - ${#auto_str} - 11)) '')${CYAN}|${NC}"
+        echo -e "  ${CYAN}|${NC} Status:  ${status_color}${status_text}${NC}$(printf '%*s' $((card_w - ${#status_text} - 11)) '')${CYAN}|${NC}"
+        echo -e "  ${CYAN}|${NC} Auto:    ${auto_color}${auto_text}${NC}$(printf '%*s' $((card_w - ${#auto_text} - 11)) '')${CYAN}|${NC}"
         echo -e "  ${CYAN}+${border}+${NC}"
         echo -e "  ${CYAN}|${NC} Server:  ${YELLOW}${srv_addr}${NC}$(printf '%*s' $((card_w - ${#srv_addr} - 11)) '')${CYAN}|${NC}"
         echo -e "  ${CYAN}|${NC} SOCKS5:  ${YELLOW}${socks_port}${NC}$(printf '%*s' $((card_w - ${#socks_port} - 11)) '')${CYAN}|${NC}"
         echo -e "  ${CYAN}+${border}+${NC}"
         echo ""
-        echo " 1) Status"
-        echo " 2) Log"
-        echo " 3) Start/Stop"
-        echo " 4) Restart"
-        echo " 5) Disable/Enable"
-        echo " 6) Settings"
-        echo " 7) Update Core"
-        echo " 8) Downgrade Core"
-        echo " 9) Uninstall"
-        echo " 0) Exit"
+        echo "   1) Status"
+        echo "   2) Log"
+        echo "   3) Start/Stop"
+        echo "   4) Restart"
+        echo "   5) Disable/Enable"
+        echo "   6) Settings"
+        echo "   7) Update Core"
+        echo "   8) Downgrade Core"
+        echo "   9) Uninstall"
+        echo "   0) Exit"
         echo ""
-        read -p "Select: " opt
-        case $opt in
-            1) systemctl status paqx --no-pager; read -n1 -s -r -p "Press any key..." ;;
-            2) journalctl -u paqx -n 30 --no-pager; read -n1 -s -r -p "Press any key..." ;;
-            3) if systemctl is-active --quiet paqx; then systemctl stop paqx; log_success "Stopped."; else systemctl start paqx; log_success "Started."; fi; sleep 1 ;;
-            4) systemctl restart paqx; log_success "Restarted."; sleep 1 ;;
-            5) if [ "$(systemctl is-enabled paqx 2>/dev/null)" = "enabled" ]; then systemctl disable paqx; log_success "Disabled."; else systemctl enable paqx; log_success "Enabled."; fi; sleep 1 ;;
-            6) show_settings; read -n1 -s -r -p "Press any key..." ;;
-            7) update_core; read -n1 -s -r -p "Press any key..." ;;
-            8) downgrade_core; read -n1 -s -r -p "Press any key..." ;;
-            9) uninstall_client; exit 0 ;;
-            0) exit 0 ;;
+        printf "  Select: "
+        read -r opt
+
+        case "$opt" in
+            1)
+                # Status
+                echo ""
+                local pid
+                pid=$(pgrep -f "paqet run" 2>/dev/null)
+                if [ -n "$pid" ]; then
+                    write_ok "paqet process running (PID: $pid)"
+                else
+                    write_warn "paqet process not found."
+                fi
+                echo ""
+                systemctl status paqx --no-pager 2>/dev/null || true
+                echo ""
+                printf "Press Enter to continue..."
+                read -r dummy
+                ;;
+            2)
+                # Log
+                echo ""
+                journalctl -u paqx -n 30 --no-pager 2>/dev/null || write_warn "No journal logs found."
+                echo ""
+                printf "Press Enter to continue..."
+                read -r dummy
+                ;;
+            3)
+                # Start/Stop toggle
+                if $is_running; then
+                    systemctl stop paqx 2>/dev/null
+                    pkill -f "paqet run" 2>/dev/null || true
+                    write_ok "Stopped."
+                else
+                    systemctl start paqx 2>/dev/null
+                    write_ok "Started."
+                fi
+                sleep 2
+                ;;
+            4)
+                # Restart
+                systemctl stop paqx 2>/dev/null
+                pkill -f "paqet run" 2>/dev/null || true
+                sleep 1
+                systemctl start paqx 2>/dev/null
+                write_ok "Restarted."
+                sleep 2
+                ;;
+            5)
+                # Disable/Enable toggle
+                if [ "$is_enabled" = "enabled" ]; then
+                    systemctl disable paqx 2>/dev/null
+                    write_ok "Auto-start disabled."
+                else
+                    systemctl enable paqx 2>/dev/null
+                    write_ok "Auto-start enabled."
+                fi
+                sleep 2
+                ;;
+            6)
+                show_settings
+                ;;
+            7)
+                # Update Core
+                write_info "Stopping service..."
+                systemctl stop paqx 2>/dev/null
+                pkill -f "paqet run" 2>/dev/null || true
+                sleep 1
+                if download_binary; then
+                    systemctl start paqx 2>/dev/null
+                    write_ok "Updated and restarted."
+                fi
+                sleep 2
+                ;;
+            8)
+                # Downgrade Core
+                downgrade_core
+                sleep 2
+                ;;
+            9)
+                uninstall_paqx
+                return
+                ;;
+            0)
+                exit 0
+                ;;
         esac
     done
 }
@@ -327,50 +686,72 @@ panel_client() {
 # -- Settings ----------------------------------------------------------------
 show_settings() {
     while true; do
-        echo -e "\n${BOLD}--- Client Settings ---${NC}"
-        echo "1) Change Server (IP:Port & Key)"
-        echo "2) Change Local SOCKS5 Port"
-        echo "3) Change Protocol Mode"
-        echo "4) View Server Info"
-        echo "5) Refresh Network"
-        echo "0) Back"
-        read -p "Select: " s_opt
+        echo ""
+        echo -e "  ${WHITE}--- Client Settings ---${NC}"
+        echo "  1) Change Server (IP:Port & Key)"
+        echo "  2) Change Local SOCKS5 Port"
+        echo "  3) Change Protocol Mode"
+        echo "  4) View Server Info"
+        echo "  5) Refresh Network"
+        echo "  0) Back"
+        printf "  Select: "
+        read -r s_opt
 
-        case $s_opt in
+        case "$s_opt" in
             1)
-                read -p "New Server (IP:Port): " new_addr
-                read -p "New Encryption Key: " new_key
+                printf "  New Server (IP:Port): "
+                read -r new_addr
+                printf "  New Encryption Key: "
+                read -r new_key
+
+                # Remove old firewall rules
+                local old_addr
+                old_addr=$(awk '/^server:/{found=1} found && /addr:/{print $2; exit}' "$CONF_FILE" | tr -d '"')
+                [ -n "$old_addr" ] && remove_firewall_rules
+
                 sed -i "/^server:/,/^[^ ]/{s|addr: .*|addr: \"$new_addr\"|}" "$CONF_FILE"
-                sed -i "s/key: .*/key: \"$new_key\"/" "$CONF_FILE"
-                log_success "Server config updated."
-                log_info "Restarting service..."
-                systemctl restart paqx
+                sed -i "s|key: .*|key: \"$new_key\"|" "$CONF_FILE"
+
+                # Apply new firewall rules
+                apply_firewall_rules "$new_addr"
+
+                write_ok "Server config updated."
+                restart_service
                 ;;
             2)
-                read -p "New Local Port [1080]: " new_port
-                new_port=${new_port:-1080}
-                sed -i "s/listen: .*/listen: \"127.0.0.1:$new_port\"/" "$CONF_FILE"
-                log_success "Local port changed to $new_port."
-                log_info "Restarting service..."
-                systemctl restart paqx
+                printf "  New Local Port [1080]: "
+                read -r new_port
+                [ -z "$new_port" ] && new_port="1080"
+
+                sed -i "s|listen: .*|listen: \"127.0.0.1:$new_port\"|" "$CONF_FILE"
+
+                write_ok "Local port changed to $new_port."
+                restart_service
                 ;;
             3)
-                echo -e "\n${YELLOW}--- Protocol Mode ---${NC}"
-                echo "1) Simple (Fast mode, key only)"
-                echo "2) Automatic (Optimized defaults)"
-                read -p "Select: " pm
+                echo ""
+                echo "  1) Simple (Fast mode, key only)"
+                echo "  2) Automatic (Optimized defaults)"
+                printf "  Select: "
+                read -r pm
 
-                local cur_key=$(grep 'key:' "$CONF_FILE" | head -1 | grep -oP '"[^"]*"' | tr -d '"')
-                local head_content=$(sed '/^transport:/,$d' "$CONF_FILE")
+                # Extract current key
+                local cur_key
+                cur_key=$(grep 'key:' "$CONF_FILE" | head -n1 | sed 's/.*"\(.*\)".*/\1/')
+
+                # Extract head (before transport)
+                local head_content
+                head_content=$(sed '/^transport:/,$d' "$CONF_FILE")
 
                 if [ "$pm" = "2" ]; then
-                    cat > "$CONF_FILE" <<EOF
-${head_content}
+                    local transport_content
+                    transport_content=$(cat << TEOF
 transport:
   protocol: "kcp"
+  conn: 1
+
   kcp:
     mode: "fast"
-    conn: 1
     nodelay: 1
     interval: 10
     resend: 2
@@ -381,26 +762,31 @@ transport:
     rcvwnd: 1024
     sndwnd: 1024
     block: "aes"
-    key: "${cur_key}"
+    key: "$cur_key"
     smuxbuf: 4194304
     streambuf: 2097152
     dshard: 10
     pshard: 3
-EOF
-                    log_success "Switched to Automatic mode."
+TEOF
+)
                 else
-                    cat > "$CONF_FILE" <<EOF
-${head_content}
+                    local transport_content
+                    transport_content=$(cat << TEOF
 transport:
   protocol: "kcp"
+  conn: 1
+
   kcp:
     mode: "fast"
-    key: "${cur_key}"
-EOF
-                    log_success "Switched to Simple mode."
+    key: "$cur_key"
+TEOF
+)
                 fi
-                log_info "Restarting service..."
-                systemctl restart paqx
+
+                printf '%s\n%s\n' "$head_content" "$transport_content" > "$CONF_FILE"
+                chmod 600 "$CONF_FILE"
+                write_ok "Protocol mode updated."
+                restart_service
                 ;;
             4)
                 echo ""
@@ -412,16 +798,16 @@ EOF
                     while IFS= read -r ln; do
                         case "$ln" in
                             server:*) sec="server" ;;
-                            socks5:*|network:*|transport:*|log:*|role:*) sec="" ;;
+                            socks5:*|network:*|transport:*|log:*|role:*) [ "$sec" != "server" ] || sec="" ;;
                         esac
                         if [ "$sec" = "server" ]; then
                             case "$ln" in
-                                *addr:*) info_addr=$(echo "$ln" | grep -oP '"[^"]*"' | tr -d '"') ;;
+                                *addr:*) info_addr=$(echo "$ln" | sed 's/.*"\(.*\)".*/\1/') ;;
                             esac
                         fi
                         case "$ln" in
-                            *key:*) info_key=$(echo "$ln" | grep -oP '"[^"]*"' | tr -d '"') ;;
-                            *listen:*) info_socks=$(echo "$ln" | grep -oP '"[^"]*"' | tr -d '"') ;;
+                            *key:*) info_key=$(echo "$ln" | sed 's/.*"\(.*\)".*/\1/') ;;
+                            *listen:*) info_socks=$(echo "$ln" | sed 's/.*"\(.*\)".*/\1/') ;;
                         esac
                     done < "$CONF_FILE"
                 fi
@@ -430,103 +816,204 @@ EOF
                 echo -e "  Key:      ${CYAN}$info_key${NC}"
                 echo -e "  SOCKS5:   ${CYAN}$info_socks${NC}"
                 echo ""
-                read -n1 -s -r -p "Press any key..."
+                printf "  Press Enter to continue..."
+                read -r dummy
                 ;;
             5)
                 # Refresh Network
                 echo ""
-                log_info "Detecting network..."
-                local new_iface=$(scan_interface)
-                local new_ip=$(ip -4 addr show "$new_iface" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
-                [ -z "$new_ip" ] && new_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
-                local new_gw_ip=$(ip route show default | awk '/default/ {print $3}')
-                local new_mac=""
-                if [ -n "$new_gw_ip" ]; then
-                    new_mac=$(ip neigh show "$new_gw_ip" 2>/dev/null | awk '/lladdr/{print $5; exit}')
-                    if [ -z "$new_mac" ]; then
-                        ping -c 1 -W 2 "$new_gw_ip" >/dev/null 2>&1 || true
-                        sleep 1
-                        new_mac=$(ip neigh show "$new_gw_ip" 2>/dev/null | awk '/lladdr/{print $5; exit}')
-                    fi
-                fi
-
+                write_info "Detecting network..."
+                get_network_info
                 echo ""
                 echo -e "  ${YELLOW}--- Detected Network ---${NC}"
-                echo -e "  Interface:   ${CYAN}$new_iface${NC}"
-                echo -e "  Local IP:    ${CYAN}$new_ip${NC}"
-                echo -e "  Gateway MAC: ${CYAN}$new_mac${NC}"
+                echo -e "  Interface:   ${CYAN}$NET_IFACE${NC}"
+                echo -e "  Local IP:    ${CYAN}$NET_IP${NC}"
+                echo -e "  Gateway MAC: ${CYAN}$NET_MAC${NC}"
                 echo ""
-                read -p "  Apply these settings? (Y/n): " confirm
+                printf "  Apply these settings? (Y/n): "
+                read -r confirm
                 if [ "$confirm" = "n" ] || [ "$confirm" = "N" ]; then continue; fi
 
-                sed -i "s|interface: .*|interface: \"$new_iface\"|" "$CONF_FILE"
-                sed -i "s|router_mac: .*|router_mac: \"$new_mac\"|" "$CONF_FILE"
-                sed -i "/ipv4:/,/router_mac:/{s|addr: .*|addr: \"$new_ip:0\"|}" "$CONF_FILE"
+                sed -i "s|interface: .*|interface: \"$NET_IFACE\"|" "$CONF_FILE"
+                sed -i "s|router_mac: .*|router_mac: \"$NET_MAC\"|" "$CONF_FILE"
+                sed -i "/ipv4:/,/router_mac:/{s|addr: .*|addr: \"$NET_IP:0\"|}" "$CONF_FILE"
 
-                log_success "Network settings updated."
-                log_info "Restarting service..."
-                systemctl restart paqx
+                write_ok "Network settings updated."
+                restart_service
                 ;;
-            0|*) return ;;
+            0|*)
+                return
+                ;;
         esac
     done
 }
 
-# -- Uninstall ---------------------------------------------------------------
-uninstall_client() {
-    echo -e "${RED}${BOLD}WARNING: This will COMPLETELY remove PaqX Client.${NC}"
+# -- Downgrade Core ----------------------------------------------------------
+downgrade_core() {
     echo ""
-    echo "  This will remove:"
-    echo "  - PaqX service (systemd)"
-    echo "  - paqet binary"
-    echo "  - All configuration files"
-    echo "  - paqx script"
-    echo ""
-    read -p "Are you sure? (y/N): " confirm
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then return; fi
+    write_info "Fetching available releases..."
+    local response
+    response=$(curl -sL --retry 3 --max-time 15 -A "paqx-manager" "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases?per_page=10")
+    local tags
+    tags=$(echo "$response" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"tag_name"[[:space:]]*:[[:space:]]*"//;s/"//')
 
-    # 1. Stop and remove service
-    log_info "Stopping service..."
-    systemctl stop paqx 2>/dev/null || true
-    systemctl disable paqx 2>/dev/null || true
-    rm -f "$SERVICE_FILE_LINUX"
-    systemctl daemon-reload 2>/dev/null || true
-
-    # 2. Kill any remaining paqet processes
-    pkill -f "paqet" 2>/dev/null || true
-
-    # 3. Remove files
-    log_info "Removing files..."
-    rm -f "$BINARY_PATH"
-    rm -rf "$CONF_DIR"
-    rm -rf "$PAQX_ROOT"
-    rm -f "/usr/bin/paqx"
-    rm -f "/usr/local/bin/paqx"
+    if [ -z "$tags" ]; then
+        write_err "Could not fetch releases."
+        return 1
+    fi
 
     echo ""
-    log_success "PaqX Client completely uninstalled."
+    local i=1
+    for tag in $tags; do
+        echo "  $i) $tag"
+        i=$((i + 1))
+    done
+    echo "  0) Cancel"
+    echo ""
+    printf "  Select version: "
+    read -r pick
+
+    if [ "$pick" = "0" ] || [ -z "$pick" ]; then return; fi
+
+    local sel_tag
+    sel_tag=$(echo "$tags" | sed -n "${pick}p")
+    if [ -z "$sel_tag" ]; then write_err "Invalid selection."; return 1; fi
+
+    local bin_arch
+    bin_arch=$(detect_arch)
+    local clean_ver="${sel_tag#v}"
+
+    # Try to find asset URL
+    local sel_response
+    sel_response=$(curl -sL --retry 3 -A "paqx-manager" "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/$sel_tag")
+    local dl_url
+    dl_url=$(echo "$sel_response" | grep "browser_download_url" | grep "linux" | grep "$bin_arch" | cut -d '"' -f 4 | head -n 1)
+    [ -z "$dl_url" ] && dl_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$sel_tag/paqet-linux-$bin_arch-$clean_ver.tar.gz"
+
+    write_info "Stopping service..."
+    systemctl stop paqx 2>/dev/null
+    pkill -f "paqet run" 2>/dev/null || true
+    sleep 1
+
+    write_info "Downloading $sel_tag..."
+    local tmp_file
+    tmp_file=$(mktemp "/tmp/paqet-download-XXXXXXXX.tar.gz")
+    curl -sL --max-time 180 --retry 3 --fail -o "$tmp_file" "$dl_url"
+    if [ $? -ne 0 ]; then
+        write_err "Download failed."
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    local tmp_extract
+    tmp_extract=$(mktemp -d "/tmp/paqet-extract-XXXXXXXX")
+    tar -xzf "$tmp_file" -C "$tmp_extract"
+    local new_bin
+    new_bin=$(find "$tmp_extract" -maxdepth 2 -type f \( -name "paqet" -o -name "paqet_linux_*" \) ! -name "*.tar.gz" | head -n1)
+    [ -z "$new_bin" ] && new_bin=$(find "$tmp_extract" -name "paqet*" -type f 2>/dev/null | head -1)
+
+    if [ -n "$new_bin" ]; then
+        cp "$new_bin" "$BINARY_PATH"
+        chmod +x "$BINARY_PATH"
+        rm -f "$tmp_file"
+        rm -rf "$tmp_extract"
+        write_ok "Downgraded to $sel_tag"
+        systemctl start paqx 2>/dev/null
+        write_ok "Restarted."
+    else
+        write_err "Binary not found in archive."
+        rm -f "$tmp_file"
+        rm -rf "$tmp_extract"
+    fi
 }
 
-# -- Self Install ------------------------------------------------------------
-cp "$0" /usr/bin/paqx 2>/dev/null; chmod +x /usr/bin/paqx 2>/dev/null
+# -- Restart Helper ----------------------------------------------------------
+restart_service() {
+    write_info "Restarting service..."
+    systemctl stop paqx 2>/dev/null
+    pkill -f "paqet run" 2>/dev/null || true
+    sleep 1
+    systemctl start paqx 2>/dev/null
+    write_ok "Restarted."
+    sleep 1
+}
+
+# -- Uninstall ---------------------------------------------------------------
+uninstall_paqx() {
+    echo ""
+    write_err "WARNING: This will COMPLETELY remove PaqX Client."
+    echo ""
+    echo "  This will remove:"
+    echo "  - Systemd service (paqx)"
+    echo "  - paqet binary"
+    echo "  - Configuration files"
+    echo "  - Firewall rules"
+    echo "  - paqx script"
+    echo ""
+    printf "  Are you sure? (y/N): "
+    read -r confirm
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then return; fi
+
+    write_info "Stopping service..."
+    systemctl stop paqx 2>/dev/null || true
+    systemctl disable paqx 2>/dev/null || true
+    pkill -f "paqet run" 2>/dev/null || true
+
+    write_info "Removing firewall rules..."
+    remove_firewall_rules
+
+    write_info "Removing files..."
+    rm -f "$SERVICE_FILE"
+    systemctl daemon-reload 2>/dev/null || true
+    rm -f "$BINARY_PATH"
+    rm -rf "$CONF_DIR"
+    rm -f "$SCRIPT_PATH"
+    rm -f /usr/local/bin/paqx 2>/dev/null
+
+    echo ""
+    write_ok "PaqX Client completely uninstalled."
+    sleep 3
+    exit 0
+}
+
+# -- Self-Install ------------------------------------------------------------
+self_install() {
+    local this_script="$0"
+    if [ -f "$this_script" ] && [ "$this_script" != "$SCRIPT_PATH" ]; then
+        cp "$this_script" "$SCRIPT_PATH"
+        chmod +x "$SCRIPT_PATH"
+    fi
+}
 
 # -- Entry Point -------------------------------------------------------------
-[ "$(id -u)" != "0" ] && { echo "Error: Must run as root!"; exit 1; }
+if [ "$1" = "install" ]; then
+    install_deps
+    download_binary
+    self_install
+    write_ok "PaqX installed! Run 'paqx' to configure."
+    exit 0
+fi
+
+self_install
 
 if [ -f "$CONF_FILE" ] && grep -q 'role: "client"' "$CONF_FILE"; then
-    panel_client
+    show_dashboard
 else
     clear
-    echo -e "\n  ${BLUE}+===============================+${NC}"
+    echo ""
+    echo -e "  ${BLUE}+===============================+${NC}"
     echo -e "  ${BLUE}|     PaqX Client  (Linux)      |${NC}"
-    echo -e "  ${BLUE}+===============================+${NC}\n"
-
-    # Install deps & binary
-    if command -v apt-get >/dev/null; then apt-get update -y && apt-get install -y curl tar; fi
-    download_binary_core
-
-    # Run client install
-    install_client
-
-    panel_client
+    echo -e "  ${BLUE}+===============================+${NC}"
+    echo ""
+    echo -e "  1) Install Client"
+    echo -e "  0) Exit"
+    echo ""
+    printf "  Select: "
+    read -r choice
+    if [ "$choice" = "1" ]; then
+        install_client
+        show_dashboard
+    else
+        exit 0
+    fi
 fi
