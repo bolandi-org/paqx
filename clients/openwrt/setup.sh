@@ -372,9 +372,9 @@ install_client() {
 
     [ "$mode" = "3" ] && prompt_manual_kcp
 
-    printf "  Local SOCKS5 Port [1080]: "
+    printf "  Local SOCKS5 Port [10800]: "
     read -r local_port
-    [ -z "$local_port" ] && local_port="1080"
+    [ -z "$local_port" ] && local_port="10800"
 
     # 4. Network detection
     write_info "Detecting network..."
@@ -684,9 +684,9 @@ show_settings() {
                 restart_service
                 ;;
             2)
-                printf "  New Local Port [1080]: "
+                printf "  New Local Port [10800]: "
                 read -r new_port
-                [ -z "$new_port" ] && new_port="1080"
+                [ -z "$new_port" ] && new_port="10800"
 
                 sed -i "s|listen: .*|listen: \"0.0.0.0:$new_port\"|" "$CONF_FILE"
 

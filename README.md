@@ -73,7 +73,7 @@ curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwr
 | Feature | Description |
 |---------|-------------|
 | **Plug & Play** | Auto-detects network adapter, gateway MAC, and generates config |
-| **SOCKS5 Proxy** | Configurable local port (default `1080`) |
+| **SOCKS5 Proxy** | Configurable local port (default `10800`) |
 | **Service Management** | `systemd` (Linux) · `procd` (OpenWrt) · Scheduled Task (Windows) |
 | **Protocol Modes** | `Simple` (key only) · `Automatic` (optimized defaults) |
 | **Firewall Rules** | `NOTRACK` + `RST DROP` for client→server traffic (Linux) |

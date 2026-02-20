@@ -260,8 +260,8 @@ function Install-PaqXClient {
         $manualKcp = Get-ManualKcpConfig $key
     }
 
-    $localPort = Read-Host "  Local SOCKS5 Port [1080]"
-    if (-not $localPort) { $localPort = "1080" }
+    $localPort = Read-Host "  Local SOCKS5 Port [10800]"
+    if (-not $localPort) { $localPort = "10800" }
 
     # 4. Network detection
     Write-Info "Detecting network..."
@@ -664,8 +664,8 @@ function Show-Settings {
                 Restart-PaqXTask
             }
             "2" {
-                $newLocal = Read-Host "  New Local Port [1080]"
-                if (-not $newLocal) { $newLocal = "1080" }
+                $newLocal = Read-Host "  New Local Port [10800]"
+                if (-not $newLocal) { $newLocal = "10800" }
 
                 $content = Get-Content $ConfigPath -Raw
                 $content = $content -replace '(listen:\s*)"[^"]*"', "`$1`"127.0.0.1:$newLocal`""
