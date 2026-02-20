@@ -161,6 +161,52 @@ function Get-NetworkInfo {
     }
 }
 
+# -- Protocol Prompt Helpers --------------------------------------------
+function Get-ManualKcpConfig($key) {
+    Write-CL ""
+    $pmConn = Read-Host "  Conn [1]"; if (-not $pmConn) { $pmConn = "1" }
+    $pmMode = Read-Host "  Mode [fast]"; if (-not $pmMode) { $pmMode = "fast" }
+    $pmNoDelay = Read-Host "  NoDelay [1]"; if (-not $pmNoDelay) { $pmNoDelay = "1" }
+    $pmInterval = Read-Host "  Interval [10]"; if (-not $pmInterval) { $pmInterval = "10" }
+    $pmResend = Read-Host "  Resend [2]"; if (-not $pmResend) { $pmResend = "2" }
+    $pmNc = Read-Host "  NoCongestion [1]"; if (-not $pmNc) { $pmNc = "1" }
+    $pmWdelay = Read-Host "  WaitDelay (true/false) [false]"; if (-not $pmWdelay) { $pmWdelay = "false" }
+    $pmAck = Read-Host "  AckNoDelay (true/false) [true]"; if (-not $pmAck) { $pmAck = "true" }
+    $pmMtu = Read-Host "  MTU [1350]"; if (-not $pmMtu) { $pmMtu = "1350" }
+    $pmRcvWnd = Read-Host "  RcvWnd [1024]"; if (-not $pmRcvWnd) { $pmRcvWnd = "1024" }
+    $pmSndWnd = Read-Host "  SndWnd [1024]"; if (-not $pmSndWnd) { $pmSndWnd = "1024" }
+    $pmBlock = Read-Host "  Block [aes]"; if (-not $pmBlock) { $pmBlock = "aes" }
+    $pmSmux = Read-Host "  SMuxBuf [4194304]"; if (-not $pmSmux) { $pmSmux = "4194304" }
+    $pmStream = Read-Host "  StreamBuf [2097152]"; if (-not $pmStream) { $pmStream = "2097152" }
+    $pmDshard = Read-Host "  DataShard [10]"; if (-not $pmDshard) { $pmDshard = "10" }
+    $pmPshard = Read-Host "  ParityShard [3]"; if (-not $pmPshard) { $pmPshard = "3" }
+
+    $kcpBlock = @"
+transport:
+  protocol: "kcp"
+  conn: $pmConn
+
+  kcp:
+    mode: "$pmMode"
+    nodelay: $pmNoDelay
+    interval: $pmInterval
+    resend: $pmResend
+    nocongestion: $pmNc
+    wdelay: $pmWdelay
+    acknodelay: $pmAck
+    mtu: $pmMtu
+    rcvwnd: $pmRcvWnd
+    sndwnd: $pmSndWnd
+    block: "$pmBlock"
+    key: "$key"
+    smuxbuf: $pmSmux
+    streambuf: $pmStream
+    dshard: $pmDshard
+    pshard: $pmPshard
+"@
+    return $kcpBlock
+}
+
 # -- Install ------------------------------------------------------------
 function Install-PaqXClient {
     # 1. Npcap check
@@ -181,8 +227,14 @@ function Install-PaqXClient {
     Write-CL ""
     Write-CL "  1) Simple (Fast mode, key only - recommended)" "White"
     Write-CL "  2) Automatic (Default optimized settings)" "White"
+    Write-CL "  3) Manual (Advanced custom settings)" "White"
     $mode = Read-Host "  Select [1]"
     if (-not $mode) { $mode = "1" }
+
+    $manualKcp = ""
+    if ($mode -eq "3") {
+        $manualKcp = Get-ManualKcpConfig $key
+    }
 
     $localPort = Read-Host "  Local SOCKS5 Port [1080]"
     if (-not $localPort) { $localPort = "1080" }
@@ -195,7 +247,36 @@ function Install-PaqXClient {
     Write-OK "Gateway MAC: $($net.GatewayMAC)"
 
     # 5. Generate config
-    if ($mode -eq "2") {
+    if ($mode -eq "3") {
+        $configContent = @"
+role: "client"
+
+log:
+  level: "info"
+
+socks5:
+  - listen: "127.0.0.1:$localPort"
+    username: ""
+    password: ""
+
+network:
+  interface: "$($net.AdapterName)"
+  guid: '$($net.GUID)'
+  ipv4:
+    addr: "$($net.LocalIP):0"
+    router_mac: "$($net.GatewayMAC)"
+
+  tcp:
+    local_flag: ["PA"]
+    remote_flag: ["PA"]
+
+server:
+  addr: "${serverAddr}"
+
+$manualKcp
+"@
+    }
+    elseif ($mode -eq "2") {
         $configContent = @"
 role: "client"
 
@@ -574,6 +655,7 @@ function Show-Settings {
                 Write-CL ""
                 Write-CL "  1) Simple (Fast mode, key only)" "White"
                 Write-CL "  2) Automatic (Optimized defaults)" "White"
+                Write-CL "  3) Manual (Advanced custom settings)" "White"
                 $pm = Read-Host "  Select"
 
                 $content = Get-Content $ConfigPath -Raw
@@ -581,6 +663,11 @@ function Show-Settings {
                 # Extract current key
                 $curKey = ""
                 if ($content -match 'key:\s*"([^"]*)"') { $curKey = $Matches[1] }
+
+                $manualKcp = ""
+                if ($pm -eq "3") {
+                    $manualKcp = Get-ManualKcpConfig $curKey
+                }
 
                 # Extract everything before transport section
                 $head = ($content -split "transport:")[0]
@@ -609,6 +696,9 @@ transport:
     dshard: 10
     pshard: 3
 "@
+                }
+                elseif ($pm -eq "3") {
+                    $transport = $manualKcp
                 }
                 else {
                     $transport = @"
