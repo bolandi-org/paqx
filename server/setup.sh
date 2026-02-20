@@ -444,6 +444,20 @@ panel_client() {
 # MAIN ENTRY POINT
 # =============================================
 
+self_install() {
+    local this_script="$0"
+    if command -v realpath >/dev/null 2>&1; then
+        this_script="$(realpath "$0" 2>/dev/null || echo "$0")"
+    fi
+    local target="/usr/local/bin/paqx"
+    if [ -f "$this_script" ] && [ "$this_script" != "$target" ] && [ "$this_script" != "/usr/bin/paqx" ]; then
+        cp "$this_script" "$target" 2>/dev/null || cp "$this_script" "/usr/bin/paqx" 2>/dev/null
+        chmod +x "$target" 2>/dev/null || chmod +x "/usr/bin/paqx" 2>/dev/null
+    fi
+}
+
+self_install
+
 ROLE=$(get_installed_role)
 
 if [ "$ROLE" = "none" ]; then

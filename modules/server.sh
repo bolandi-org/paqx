@@ -215,10 +215,37 @@ server_pre_install() {
     read -p "Listen Port [8443]: " SRV_PORT
     SRV_PORT=${SRV_PORT:-8443}
     
-    # Default to automatic tuning
-    SRV_PROTO_MODE=auto
+    echo ""
+    echo "1) Simple (Fast mode, key only - no extra params)"
+    echo "2) Automatic (Recommended - tuned to server specs)"
+    echo "3) Manual (Configure all protocol values)"
+    read -p "Select [2]: " p_mode
+    p_mode=${p_mode:-2}
     
-    log_info "Protocol mode: Automatic (Tuned to server specs)"
+    if [ "$p_mode" = "3" ]; then
+        echo -e "\n${YELLOW}--- Protocol Settings ---${NC}"
+        echo "Enter values (press Enter for default):"
+        read -p "nodelay [1]: " P_NODELAY; P_NODELAY=${P_NODELAY:-1}
+        read -p "interval [10]: " P_INTERVAL; P_INTERVAL=${P_INTERVAL:-10}
+        read -p "resend [2]: " P_RESEND; P_RESEND=${P_RESEND:-2}
+        read -p "nocongestion [1]: " P_NOCONG; P_NOCONG=${P_NOCONG:-1}
+        read -p "wdelay [false]: " P_WDELAY; P_WDELAY=${P_WDELAY:-false}
+        read -p "acknodelay [true]: " P_ACKNO; P_ACKNO=${P_ACKNO:-true}
+        read -p "mtu [1350]: " P_MTU; P_MTU=${P_MTU:-1350}
+        read -p "rcvwnd [1024]: " P_RCVWND; P_RCVWND=${P_RCVWND:-1024}
+        read -p "sndwnd [1024]: " P_SNDWND; P_SNDWND=${P_SNDWND:-1024}
+        read -p "block [aes]: " P_BLOCK; P_BLOCK=${P_BLOCK:-aes}
+        read -p "smuxbuf [4194304]: " P_SMUXBUF; P_SMUXBUF=${P_SMUXBUF:-4194304}
+        read -p "streambuf [2097152]: " P_STREAMBUF; P_STREAMBUF=${P_STREAMBUF:-2097152}
+        read -p "dshard [10]: " P_DSHARD; P_DSHARD=${P_DSHARD:-10}
+        read -p "pshard [3]: " P_PSHARD; P_PSHARD=${P_PSHARD:-3}
+        SRV_PROTO_MODE=manual
+    elif [ "$p_mode" = "1" ]; then
+        SRV_PROTO_MODE=simple
+    else
+        SRV_PROTO_MODE=auto
+        log_info "Protocol mode: Automatic (Tuned to server specs)"
+    fi
 }
 
 # --- FIRST RUN: Install server ---
@@ -470,22 +497,59 @@ transport:
 EOF
                     log_success "Switched to Automatic mode."
                 elif [ "$pm" = "3" ]; then
+                    local def_nd="1"; local def_iv="10"; local def_rs="2"
+                    local def_nc="1"; local def_wd="false"; local def_an="true"; local def_mt="1350"
+                    local def_rw="1024"; local def_sw="1024"; local def_bl="aes"
+                    local def_sb="4194304"; local def_stb="2097152"; local def_ds="10"; local def_ps="3"
+
+                    if [ -f "$CONF_FILE" ]; then
+                        local val
+                        val=$(grep -E "^\\s+nodelay:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_nd="$val"
+                        val=$(grep -E "^\\s+interval:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_iv="$val"
+                        val=$(grep -E "^\\s+resend:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_rs="$val"
+                        val=$(grep -E "^\\s+nocongestion:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_nc="$val"
+                        val=$(grep -E "^\\s+wdelay:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_wd="$val"
+                        val=$(grep -E "^\\s+acknodelay:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_an="$val"
+                        val=$(grep -E "^\\s+mtu:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_mt="$val"
+                        val=$(grep -E "^\\s+rcvwnd:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_rw="$val"
+                        val=$(grep -E "^\\s+sndwnd:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_sw="$val"
+                        val=$(grep -E "^\\s+block:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_bl="$val"
+                        val=$(grep -E "^\\s+smuxbuf:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_sb="$val"
+                        val=$(grep -E "^\\s+streambuf:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_stb="$val"
+                        val=$(grep -E "^\\s+dshard:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_ds="$val"
+                        val=$(grep -E "^\\s+pshard:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+                        [ -n "$val" ] && def_ps="$val"
+                    fi
+
                     echo -e "\n${YELLOW}--- Protocol Settings ---${NC}"
                     echo "Enter values (press Enter for default):"
-                    read -p "nodelay [1]: " val_nd; val_nd=${val_nd:-1}
-                    read -p "interval [10]: " val_iv; val_iv=${val_iv:-10}
-                    read -p "resend [2]: " val_rs; val_rs=${val_rs:-2}
-                    read -p "nocongestion [1]: " val_nc; val_nc=${val_nc:-1}
-                    read -p "wdelay [false]: " val_wd; val_wd=${val_wd:-false}
-                    read -p "acknodelay [true]: " val_an; val_an=${val_an:-true}
-                    read -p "mtu [1350]: " val_mt; val_mt=${val_mt:-1350}
-                    read -p "rcvwnd [1024]: " val_rw; val_rw=${val_rw:-1024}
-                    read -p "sndwnd [1024]: " val_sw; val_sw=${val_sw:-1024}
-                    read -p "block [aes]: " val_bl; val_bl=${val_bl:-aes}
-                    read -p "smuxbuf [4194304]: " val_sb; val_sb=${val_sb:-4194304}
-                    read -p "streambuf [2097152]: " val_stb; val_stb=${val_stb:-2097152}
-                    read -p "dshard [10]: " val_ds; val_ds=${val_ds:-10}
-                    read -p "pshard [3]: " val_ps; val_ps=${val_ps:-3}
+                    read -p "nodelay [$def_nd]: " val_nd; val_nd=${val_nd:-$def_nd}
+                    read -p "interval [$def_iv]: " val_iv; val_iv=${val_iv:-$def_iv}
+                    read -p "resend [$def_rs]: " val_rs; val_rs=${val_rs:-$def_rs}
+                    read -p "nocongestion [$def_nc]: " val_nc; val_nc=${val_nc:-$def_nc}
+                    read -p "wdelay [$def_wd]: " val_wd; val_wd=${val_wd:-$def_wd}
+                    read -p "acknodelay [$def_an]: " val_an; val_an=${val_an:-$def_an}
+                    read -p "mtu [$def_mt]: " val_mt; val_mt=${val_mt:-$def_mt}
+                    read -p "rcvwnd [$def_rw]: " val_rw; val_rw=${val_rw:-$def_rw}
+                    read -p "sndwnd [$def_sw]: " val_sw; val_sw=${val_sw:-$def_sw}
+                    read -p "block [$def_bl]: " val_bl; val_bl=${val_bl:-$def_bl}
+                    read -p "smuxbuf [$def_sb]: " val_sb; val_sb=${val_sb:-$def_sb}
+                    read -p "streambuf [$def_stb]: " val_stb; val_stb=${val_stb:-$def_stb}
+                    read -p "dshard [$def_ds]: " val_ds; val_ds=${val_ds:-$def_ds}
+                    read -p "pshard [$def_ps]: " val_ps; val_ps=${val_ps:-$def_ps}
                     
                     local tmp_head=$(sed -n '1,/^transport:/{ /^transport:/!p }' "$CONF_FILE")
                     cat > "$CONF_FILE" <<EOF
@@ -493,7 +557,7 @@ ${tmp_head}
 transport:
   protocol: "kcp"
   kcp:
-    mode: "fast"
+    mode: "manual"
     nodelay: $val_nd
     interval: $val_iv
     resend: $val_rs
