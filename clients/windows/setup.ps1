@@ -165,7 +165,7 @@ function Get-NetworkInfo {
 function Get-ManualKcpConfig($key) {
     Write-CL ""
     $pmConn = Read-Host "  Conn [1]"; if (-not $pmConn) { $pmConn = "1" }
-    $pmMode = Read-Host "  Mode [fast]"; if (-not $pmMode) { $pmMode = "fast" }
+    $pmMode = "manual"
     $pmNoDelay = Read-Host "  NoDelay [1]"; if (-not $pmNoDelay) { $pmNoDelay = "1" }
     $pmInterval = Read-Host "  Interval [10]"; if (-not $pmInterval) { $pmInterval = "10" }
     $pmResend = Read-Host "  Resend [2]"; if (-not $pmResend) { $pmResend = "2" }
