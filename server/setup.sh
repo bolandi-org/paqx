@@ -179,8 +179,9 @@ cp "$0" /usr/bin/paqx 2>/dev/null; chmod +x /usr/bin/paqx 2>/dev/null
 # -- Entry Point -------------------------------------------------------------
 [ "$(id -u)" != "0" ] && { echo "Error: Must run as root!"; exit 1; }
 
-if [ -f "$CONF_FILE" ] && grep -q 'role: "server"' "$CONF_FILE"; then
-    panel_server
+# Check for settings.conf which is the main indicator of installation in the module
+if [ -f "/opt/paqctl/settings.conf" ]; then
+    show_menu
 else
     clear
     echo -e "\n  ${BLUE}+===============================+${NC}"
@@ -192,8 +193,8 @@ else
     download_binary_core
 
     # Run server install (from module)
-    install_server
+    main
 
     read -n1 -s -r -p "Press any key..."
-    panel_server
+    show_menu
 fi
