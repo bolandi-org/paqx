@@ -17,7 +17,7 @@ Deploy and manage **[Paqet](https://github.com/hanselime/paqet)** tunnels across
 ## 🖥️ Server (Linux)
 
 ```bash
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/server/setup.sh" -o paqx.sh && sudo bash paqx.sh
 ```
 
 Select **Server** on first run. The installer auto-configures firewall, kernel optimizations, and service.
@@ -29,7 +29,7 @@ Select **Server** on first run. The installer auto-configures firewall, kernel o
 ### 🐧 Linux
 
 ```bash
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/setup.sh" -o /tmp/paqx.sh && bash /tmp/paqx.sh
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/setup.sh" -o paqx.sh && sudo bash paqx.sh
 ```
 
 > After first setup, use `paqx` command to manage.
@@ -49,7 +49,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercont
 SSH into your router and run:
 
 ```sh
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
 ```
 
 > After first setup, use `paqx` command to manage.
@@ -180,7 +180,7 @@ nft delete table inet paqet_rules 2>/dev/null
 ## 🖥️ سرور (لینوکس)
 
 ```bash
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/bin/paqx && chmod +x /usr/bin/paqx && paqx
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/server/setup.sh" -o paqx.sh && sudo bash paqx.sh
 ```
 
 > در اولین اجرا **سرور** را انتخاب کنید.
@@ -190,7 +190,7 @@ curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/paqx" -o /usr/b
 ### 🐧 لینوکس
 
 ```bash
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/setup.sh" -o /tmp/paqx.sh && bash /tmp/paqx.sh
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/setup.sh" -o paqx.sh && sudo bash paqx.sh
 ```
 
 > بعد از نصب اولیه، با دستور `paqx` مدیریت کنید.
@@ -210,7 +210,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercont
 از طریق SSH به روتر وصل شوید:
 
 ```sh
-curl -L "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
 ```
 
 > بعد از نصب اولیه، با دستور `paqx` مدیریت کنید.
