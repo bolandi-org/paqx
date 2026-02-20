@@ -32,38 +32,77 @@ write_info() { echo -e "${YELLOW}[*] $1${NC}"; }
 write_warn() { echo -e "${YELLOW}[!] $1${NC}"; }
 
 prompt_manual_kcp() {
+    local def_conn="1"; local def_nodelay="1"; local def_interval="10"; local def_resend="2"
+    local def_nc="1"; local def_wdelay="false"; local def_ack="true"; local def_mtu="1350"
+    local def_rcvwnd="1024"; local def_sndwnd="1024"; local def_block="aes"
+    local def_smux="4194304"; local def_stream="2097152"; local def_dshard="10"; local def_pshard="3"
+
+    if [ -f "$CONF_FILE" ]; then
+        local val
+        val=$(grep -E "^[[:space:]]+conn:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_conn="$val"
+        val=$(grep -E "^[[:space:]]+nodelay:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_nodelay="$val"
+        val=$(grep -E "^[[:space:]]+interval:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_interval="$val"
+        val=$(grep -E "^[[:space:]]+resend:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_resend="$val"
+        val=$(grep -E "^[[:space:]]+nocongestion:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_nc="$val"
+        val=$(grep -E "^[[:space:]]+wdelay:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_wdelay="$val"
+        val=$(grep -E "^[[:space:]]+acknodelay:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_ack="$val"
+        val=$(grep -E "^[[:space:]]+mtu:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_mtu="$val"
+        val=$(grep -E "^[[:space:]]+rcvwnd:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_rcvwnd="$val"
+        val=$(grep -E "^[[:space:]]+sndwnd:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_sndwnd="$val"
+        val=$(grep -E "^[[:space:]]+block:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_block="$val"
+        val=$(grep -E "^[[:space:]]+smuxbuf:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_smux="$val"
+        val=$(grep -E "^[[:space:]]+streambuf:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_stream="$val"
+        val=$(grep -E "^[[:space:]]+dshard:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_dshard="$val"
+        val=$(grep -E "^[[:space:]]+pshard:" "$CONF_FILE" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"\r')
+        [ -n "$val" ] && def_pshard="$val"
+    fi
+
     echo ""
-    printf "  Conn [1]: "
-    read -r PM_CONN; [ -z "$PM_CONN" ] && PM_CONN="1"
+    printf "  Conn [%s]: " "$def_conn"
+    read -r PM_CONN; [ -z "$PM_CONN" ] && PM_CONN="$def_conn"
     PM_MODE="manual"
-    printf "  NoDelay [1]: "
-    read -r PM_NODELAY; [ -z "$PM_NODELAY" ] && PM_NODELAY="1"
-    printf "  Interval [10]: "
-    read -r PM_INTERVAL; [ -z "$PM_INTERVAL" ] && PM_INTERVAL="10"
-    printf "  Resend [2]: "
-    read -r PM_RESEND; [ -z "$PM_RESEND" ] && PM_RESEND="2"
-    printf "  NoCongestion [1]: "
-    read -r PM_NC; [ -z "$PM_NC" ] && PM_NC="1"
-    printf "  WaitDelay (true/false) [false]: "
-    read -r PM_WDELAY; [ -z "$PM_WDELAY" ] && PM_WDELAY="false"
-    printf "  AckNoDelay (true/false) [true]: "
-    read -r PM_ACK; [ -z "$PM_ACK" ] && PM_ACK="true"
-    printf "  MTU [1350]: "
-    read -r PM_MTU; [ -z "$PM_MTU" ] && PM_MTU="1350"
-    printf "  RcvWnd [1024]: "
-    read -r PM_RCVWND; [ -z "$PM_RCVWND" ] && PM_RCVWND="1024"
-    printf "  SndWnd [1024]: "
-    read -r PM_SNDWND; [ -z "$PM_SNDWND" ] && PM_SNDWND="1024"
-    printf "  Block [aes]: "
-    read -r PM_BLOCK; [ -z "$PM_BLOCK" ] && PM_BLOCK="aes"
-    printf "  SMuxBuf [4194304]: "
-    read -r PM_SMUX; [ -z "$PM_SMUX" ] && PM_SMUX="4194304"
-    printf "  StreamBuf [2097152]: "
-    read -r PM_STREAM; [ -z "$PM_STREAM" ] && PM_STREAM="2097152"
-    printf "  DataShard [10]: "
-    read -r PM_DSHARD; [ -z "$PM_DSHARD" ] && PM_DSHARD="10"
-    printf "  ParityShard [3]: "
-    read -r PM_PSHARD; [ -z "$PM_PSHARD" ] && PM_PSHARD="3"
+    printf "  NoDelay [%s]: " "$def_nodelay"
+    read -r PM_NODELAY; [ -z "$PM_NODELAY" ] && PM_NODELAY="$def_nodelay"
+    printf "  Interval [%s]: " "$def_interval"
+    read -r PM_INTERVAL; [ -z "$PM_INTERVAL" ] && PM_INTERVAL="$def_interval"
+    printf "  Resend [%s]: " "$def_resend"
+    read -r PM_RESEND; [ -z "$PM_RESEND" ] && PM_RESEND="$def_resend"
+    printf "  NoCongestion [%s]: " "$def_nc"
+    read -r PM_NC; [ -z "$PM_NC" ] && PM_NC="$def_nc"
+    printf "  WaitDelay (true/false) [%s]: " "$def_wdelay"
+    read -r PM_WDELAY; [ -z "$PM_WDELAY" ] && PM_WDELAY="$def_wdelay"
+    printf "  AckNoDelay (true/false) [%s]: " "$def_ack"
+    read -r PM_ACK; [ -z "$PM_ACK" ] && PM_ACK="$def_ack"
+    printf "  MTU [%s]: " "$def_mtu"
+    read -r PM_MTU; [ -z "$PM_MTU" ] && PM_MTU="$def_mtu"
+    printf "  RcvWnd [%s]: " "$def_rcvwnd"
+    read -r PM_RCVWND; [ -z "$PM_RCVWND" ] && PM_RCVWND="$def_rcvwnd"
+    printf "  SndWnd [%s]: " "$def_sndwnd"
+    read -r PM_SNDWND; [ -z "$PM_SNDWND" ] && PM_SNDWND="$def_sndwnd"
+    printf "  Block [%s]: " "$def_block"
+    read -r PM_BLOCK; [ -z "$PM_BLOCK" ] && PM_BLOCK="$def_block"
+    printf "  SMuxBuf [%s]: " "$def_smux"
+    read -r PM_SMUX; [ -z "$PM_SMUX" ] && PM_SMUX="$def_smux"
+    printf "  StreamBuf [%s]: " "$def_stream"
+    read -r PM_STREAM; [ -z "$PM_STREAM" ] && PM_STREAM="$def_stream"
+    printf "  DataShard [%s]: " "$def_dshard"
+    read -r PM_DSHARD; [ -z "$PM_DSHARD" ] && PM_DSHARD="$def_dshard"
+    printf "  ParityShard [%s]: " "$def_pshard"
+    read -r PM_PSHARD; [ -z "$PM_PSHARD" ] && PM_PSHARD="$def_pshard"
 }
 
 generate_manual_kcp_block() {

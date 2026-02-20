@@ -163,23 +163,47 @@ function Get-NetworkInfo {
 
 # -- Protocol Prompt Helpers --------------------------------------------
 function Get-ManualKcpConfig($key) {
+    $defConn = "1"; $defNoDelay = "1"; $defInterval = "10"; $defResend = "2"
+    $defNc = "1"; $defWdelay = "false"; $defAck = "true"; $defMtu = "1350"
+    $defRcvWnd = "1024"; $defSndWnd = "1024"; $defBlock = "aes"
+    $defSmux = "4194304"; $defStream = "2097152"; $defDshard = "10"; $defPshard = "3"
+
+    if (Test-Path $ConfigPath) {
+        $content = Get-Content $ConfigPath -Raw
+        if ($content -match '(?m)^\s*conn:\s*"?([^"\r\n]+)"?') { $defConn = $Matches[1] }
+        if ($content -match '(?m)^\s*nodelay:\s*"?([^"\r\n]+)"?') { $defNoDelay = $Matches[1] }
+        if ($content -match '(?m)^\s*interval:\s*"?([^"\r\n]+)"?') { $defInterval = $Matches[1] }
+        if ($content -match '(?m)^\s*resend:\s*"?([^"\r\n]+)"?') { $defResend = $Matches[1] }
+        if ($content -match '(?m)^\s*nocongestion:\s*"?([^"\r\n]+)"?') { $defNc = $Matches[1] }
+        if ($content -match '(?m)^\s*wdelay:\s*"?([^"\r\n]+)"?') { $defWdelay = $Matches[1] }
+        if ($content -match '(?m)^\s*acknodelay:\s*"?([^"\r\n]+)"?') { $defAck = $Matches[1] }
+        if ($content -match '(?m)^\s*mtu:\s*"?([^"\r\n]+)"?') { $defMtu = $Matches[1] }
+        if ($content -match '(?m)^\s*rcvwnd:\s*"?([^"\r\n]+)"?') { $defRcvWnd = $Matches[1] }
+        if ($content -match '(?m)^\s*sndwnd:\s*"?([^"\r\n]+)"?') { $defSndWnd = $Matches[1] }
+        if ($content -match '(?m)^\s*block:\s*"?([^"\r\n]+)"?') { $defBlock = $Matches[1] }
+        if ($content -match '(?m)^\s*smuxbuf:\s*"?([^"\r\n]+)"?') { $defSmux = $Matches[1] }
+        if ($content -match '(?m)^\s*streambuf:\s*"?([^"\r\n]+)"?') { $defStream = $Matches[1] }
+        if ($content -match '(?m)^\s*dshard:\s*"?([^"\r\n]+)"?') { $defDshard = $Matches[1] }
+        if ($content -match '(?m)^\s*pshard:\s*"?([^"\r\n]+)"?') { $defPshard = $Matches[1] }
+    }
+
     Write-CL ""
-    $pmConn = Read-Host "  Conn [1]"; if (-not $pmConn) { $pmConn = "1" }
+    $pmConn = Read-Host "  Conn [$defConn]"; if (-not $pmConn) { $pmConn = $defConn }
     $pmMode = "manual"
-    $pmNoDelay = Read-Host "  NoDelay [1]"; if (-not $pmNoDelay) { $pmNoDelay = "1" }
-    $pmInterval = Read-Host "  Interval [10]"; if (-not $pmInterval) { $pmInterval = "10" }
-    $pmResend = Read-Host "  Resend [2]"; if (-not $pmResend) { $pmResend = "2" }
-    $pmNc = Read-Host "  NoCongestion [1]"; if (-not $pmNc) { $pmNc = "1" }
-    $pmWdelay = Read-Host "  WaitDelay (true/false) [false]"; if (-not $pmWdelay) { $pmWdelay = "false" }
-    $pmAck = Read-Host "  AckNoDelay (true/false) [true]"; if (-not $pmAck) { $pmAck = "true" }
-    $pmMtu = Read-Host "  MTU [1350]"; if (-not $pmMtu) { $pmMtu = "1350" }
-    $pmRcvWnd = Read-Host "  RcvWnd [1024]"; if (-not $pmRcvWnd) { $pmRcvWnd = "1024" }
-    $pmSndWnd = Read-Host "  SndWnd [1024]"; if (-not $pmSndWnd) { $pmSndWnd = "1024" }
-    $pmBlock = Read-Host "  Block [aes]"; if (-not $pmBlock) { $pmBlock = "aes" }
-    $pmSmux = Read-Host "  SMuxBuf [4194304]"; if (-not $pmSmux) { $pmSmux = "4194304" }
-    $pmStream = Read-Host "  StreamBuf [2097152]"; if (-not $pmStream) { $pmStream = "2097152" }
-    $pmDshard = Read-Host "  DataShard [10]"; if (-not $pmDshard) { $pmDshard = "10" }
-    $pmPshard = Read-Host "  ParityShard [3]"; if (-not $pmPshard) { $pmPshard = "3" }
+    $pmNoDelay = Read-Host "  NoDelay [$defNoDelay]"; if (-not $pmNoDelay) { $pmNoDelay = $defNoDelay }
+    $pmInterval = Read-Host "  Interval [$defInterval]"; if (-not $pmInterval) { $pmInterval = $defInterval }
+    $pmResend = Read-Host "  Resend [$defResend]"; if (-not $pmResend) { $pmResend = $defResend }
+    $pmNc = Read-Host "  NoCongestion [$defNc]"; if (-not $pmNc) { $pmNc = $defNc }
+    $pmWdelay = Read-Host "  WaitDelay (true/false) [$defWdelay]"; if (-not $pmWdelay) { $pmWdelay = $defWdelay }
+    $pmAck = Read-Host "  AckNoDelay (true/false) [$defAck]"; if (-not $pmAck) { $pmAck = $defAck }
+    $pmMtu = Read-Host "  MTU [$defMtu]"; if (-not $pmMtu) { $pmMtu = $defMtu }
+    $pmRcvWnd = Read-Host "  RcvWnd [$defRcvWnd]"; if (-not $pmRcvWnd) { $pmRcvWnd = $defRcvWnd }
+    $pmSndWnd = Read-Host "  SndWnd [$defSndWnd]"; if (-not $pmSndWnd) { $pmSndWnd = $defSndWnd }
+    $pmBlock = Read-Host "  Block [$defBlock]"; if (-not $pmBlock) { $pmBlock = $defBlock }
+    $pmSmux = Read-Host "  SMuxBuf [$defSmux]"; if (-not $pmSmux) { $pmSmux = $defSmux }
+    $pmStream = Read-Host "  StreamBuf [$defStream]"; if (-not $pmStream) { $pmStream = $defStream }
+    $pmDshard = Read-Host "  DataShard [$defDshard]"; if (-not $pmDshard) { $pmDshard = $defDshard }
+    $pmPshard = Read-Host "  ParityShard [$defPshard]"; if (-not $pmPshard) { $pmPshard = $defPshard }
 
     $kcpBlock = @"
 transport:
