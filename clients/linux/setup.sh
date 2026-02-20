@@ -558,7 +558,7 @@ transport:
   conn: 1
 
   kcp:
-    mode: "fast"
+    mode: "manual"
     nodelay: 1
     interval: 10
     resend: 2
@@ -888,7 +888,7 @@ transport:
   conn: 1
 
   kcp:
-    mode: "fast"
+    mode: "manual"
     nodelay: 1
     interval: 10
     resend: 2
