@@ -31,6 +31,69 @@ write_err()  { echo -e "${RED}[!] $1${NC}"; }
 write_info() { echo -e "${YELLOW}[*] $1${NC}"; }
 write_warn() { echo -e "${YELLOW}[!] $1${NC}"; }
 
+prompt_manual_kcp() {
+    echo ""
+    printf "  Conn [1]: "
+    read -r PM_CONN; [ -z "$PM_CONN" ] && PM_CONN="1"
+    printf "  Mode [fast]: "
+    read -r PM_MODE; [ -z "$PM_MODE" ] && PM_MODE="fast"
+    printf "  NoDelay [1]: "
+    read -r PM_NODELAY; [ -z "$PM_NODELAY" ] && PM_NODELAY="1"
+    printf "  Interval [10]: "
+    read -r PM_INTERVAL; [ -z "$PM_INTERVAL" ] && PM_INTERVAL="10"
+    printf "  Resend [2]: "
+    read -r PM_RESEND; [ -z "$PM_RESEND" ] && PM_RESEND="2"
+    printf "  NoCongestion [1]: "
+    read -r PM_NC; [ -z "$PM_NC" ] && PM_NC="1"
+    printf "  WaitDelay (true/false) [false]: "
+    read -r PM_WDELAY; [ -z "$PM_WDELAY" ] && PM_WDELAY="false"
+    printf "  AckNoDelay (true/false) [true]: "
+    read -r PM_ACK; [ -z "$PM_ACK" ] && PM_ACK="true"
+    printf "  MTU [1350]: "
+    read -r PM_MTU; [ -z "$PM_MTU" ] && PM_MTU="1350"
+    printf "  RcvWnd [1024]: "
+    read -r PM_RCVWND; [ -z "$PM_RCVWND" ] && PM_RCVWND="1024"
+    printf "  SndWnd [1024]: "
+    read -r PM_SNDWND; [ -z "$PM_SNDWND" ] && PM_SNDWND="1024"
+    printf "  Block [aes]: "
+    read -r PM_BLOCK; [ -z "$PM_BLOCK" ] && PM_BLOCK="aes"
+    printf "  SMuxBuf [4194304]: "
+    read -r PM_SMUX; [ -z "$PM_SMUX" ] && PM_SMUX="4194304"
+    printf "  StreamBuf [2097152]: "
+    read -r PM_STREAM; [ -z "$PM_STREAM" ] && PM_STREAM="2097152"
+    printf "  DataShard [10]: "
+    read -r PM_DSHARD; [ -z "$PM_DSHARD" ] && PM_DSHARD="10"
+    printf "  ParityShard [3]: "
+    read -r PM_PSHARD; [ -z "$PM_PSHARD" ] && PM_PSHARD="3"
+}
+
+generate_manual_kcp_block() {
+    local k="$1"
+    cat << TEOF
+transport:
+  protocol: "kcp"
+  conn: $PM_CONN
+
+  kcp:
+    mode: "$PM_MODE"
+    nodelay: $PM_NODELAY
+    interval: $PM_INTERVAL
+    resend: $PM_RESEND
+    nocongestion: $PM_NC
+    wdelay: $PM_WDELAY
+    acknodelay: $PM_ACK
+    mtu: $PM_MTU
+    rcvwnd: $PM_RCVWND
+    sndwnd: $PM_SNDWND
+    block: "$PM_BLOCK"
+    key: "$k"
+    smuxbuf: $PM_SMUX
+    streambuf: $PM_STREAM
+    dshard: $PM_DSHARD
+    pshard: $PM_PSHARD
+TEOF
+}
+
 # -- Root Check --------------------------------------------------------------
 if [ "$(id -u)" != "0" ]; then
     write_err "Must run as root!"
@@ -379,9 +442,12 @@ install_client() {
     echo ""
     echo "  1) Simple (Fast mode, key only - recommended)"
     echo "  2) Automatic (Full optimized settings)"
+    echo "  3) Manual (Advanced custom settings)"
     printf "  Select [1]: "
     read -r mode
     [ -z "$mode" ] && mode="1"
+
+    [ "$mode" = "3" ] && prompt_manual_kcp
 
     printf "  Local SOCKS5 Port [1080]: "
     read -r local_port
@@ -397,7 +463,34 @@ install_client() {
     # 5. Generate config
     mkdir -p "$CONF_DIR"
 
-    if [ "$mode" = "2" ]; then
+    if [ "$mode" = "3" ]; then
+        cat > "$CONF_FILE" << EOF
+role: "client"
+
+log:
+  level: "info"
+
+socks5:
+  - listen: "127.0.0.1:${local_port}"
+    username: ""
+    password: ""
+
+network:
+  interface: "${NET_IFACE}"
+  ipv4:
+    addr: "${NET_IP}:0"
+    router_mac: "${NET_MAC}"
+
+  tcp:
+    local_flag: ["PA"]
+    remote_flag: ["PA"]
+
+server:
+  addr: "${server_addr}"
+
+EOF
+        generate_manual_kcp_block "${enc_key}" >> "$CONF_FILE"
+    elif [ "$mode" = "2" ]; then
         cat > "$CONF_FILE" << EOF
 role: "client"
 
@@ -732,8 +825,11 @@ show_settings() {
                 echo ""
                 echo "  1) Simple (Fast mode, key only)"
                 echo "  2) Automatic (Optimized defaults)"
+                echo "  3) Manual (Advanced custom settings)"
                 printf "  Select: "
                 read -r pm
+
+                [ "$pm" = "3" ] && prompt_manual_kcp
 
                 # Extract current key
                 local cur_key
@@ -743,7 +839,10 @@ show_settings() {
                 local head_content
                 head_content=$(sed '/^transport:/,$d' "$CONF_FILE")
 
-                if [ "$pm" = "2" ]; then
+                if [ "$pm" = "3" ]; then
+                    local transport_content
+                    transport_content=$(generate_manual_kcp_block "$cur_key")
+                elif [ "$pm" = "2" ]; then
                     local transport_content
                     transport_content=$(cat << TEOF
 transport:
