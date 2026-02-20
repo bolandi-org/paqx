@@ -17,7 +17,7 @@ Deploy and manage **[Paqet](https://github.com/hanselime/paqet)** tunnels across
 ## 🖥️ Server (Linux)
 
 ```bash
-curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/server/setup.sh" -o paqx.sh && sudo bash paqx.sh
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/server/setup.sh?v=$RANDOM" -o paqx.sh && sudo bash paqx.sh
 ```
 
 Select **Server** on first run. The installer auto-configures firewall, kernel optimizations, and service.
@@ -29,7 +29,7 @@ Select **Server** on first run. The installer auto-configures firewall, kernel o
 ### 🐧 Linux
 
 ```bash
-curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/setup.sh" -o paqx.sh && sudo bash paqx.sh
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/setup.sh?v=$RANDOM" -o paqx.sh && sudo bash paqx.sh
 ```
 
 > After first setup, use `paqx` command to manage.
@@ -39,7 +39,7 @@ curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/
 Open **PowerShell as Administrator** and run:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/windows/setup.ps1 -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
+Set-ExecutionPolicy Bypass -Scope Process -Force; iwr "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/windows/setup.ps1?v=$((Get-Date).Ticks)" -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
 ```
 
 > **Note:** [Npcap](https://npcap.com/#download) is required. The script will detect if it's missing and offer to download it automatically.
@@ -49,7 +49,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercont
 SSH into your router and run:
 
 ```sh
-curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwrt/setup.sh?v=$RANDOM" -o /tmp/paqx.sh && sh /tmp/paqx.sh
 ```
 
 > After first setup, use `paqx` command to manage.
@@ -180,7 +180,7 @@ nft delete table inet paqet_rules 2>/dev/null
 ## 🖥️ سرور (لینوکس)
 
 ```bash
-curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/server/setup.sh" -o paqx.sh && sudo bash paqx.sh
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/server/setup.sh?v=$RANDOM" -o paqx.sh && sudo bash paqx.sh
 ```
 
 > در اولین اجرا **سرور** را انتخاب کنید.
@@ -190,7 +190,7 @@ curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/server/setup.s
 ### 🐧 لینوکس
 
 ```bash
-curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/setup.sh" -o paqx.sh && sudo bash paqx.sh
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/setup.sh?v=$RANDOM" -o paqx.sh && sudo bash paqx.sh
 ```
 
 > بعد از نصب اولیه، با دستور `paqx` مدیریت کنید.
@@ -200,7 +200,7 @@ curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/linux/
 پاورشل را **به عنوان ادمین** باز کنید:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/windows/setup.ps1 -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
+Set-ExecutionPolicy Bypass -Scope Process -Force; iwr "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/windows/setup.ps1?v=$((Get-Date).Ticks)" -OutFile paqx.ps1 -UseBasicParsing; .\paqx.ps1
 ```
 
 > Npcap لازم است. اسکریپت در صورت نبود آن، دانلود خودکار پیشنهاد می‌دهد.
@@ -210,7 +210,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr https://raw.githubusercont
 از طریق SSH به روتر وصل شوید:
 
 ```sh
-curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwrt/setup.sh" -o /tmp/paqx.sh && sh /tmp/paqx.sh
+curl -sL "https://raw.githubusercontent.com/bolandi-org/paqx/main/clients/openwrt/setup.sh?v=$RANDOM" -o /tmp/paqx.sh && sh /tmp/paqx.sh
 ```
 
 > بعد از نصب اولیه، با دستور `paqx` مدیریت کنید.
