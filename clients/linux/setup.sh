@@ -213,22 +213,22 @@ download_binary() {
     local clean_ver="${tag#v}"
     local dl_url=""
     # Try to find asset URL from API response first
-    dl_url=$(echo "$response" | grep "browser_download_url" | grep "linux" | grep "$bin_arch" | cut -d '"' -f 4 | head -n 1)
+    dl_url=$(echo "$response" | grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' | grep "linux" | grep "$bin_arch" | head -1 | cut -d '"' -f 4)
     if [ -z "$dl_url" ]; then
         dl_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$tag/paqet-linux-$bin_arch-$clean_ver.tar.gz"
     fi
 
-    write_info "Downloading..."
+    write_info "Downloading from: $dl_url"
     local tmp_file
     tmp_file=$(mktemp "/tmp/paqet-download-XXXXXXXX.tar.gz")
 
     local download_ok=false
-    if curl -sL --max-time 180 --retry 3 --retry-delay 5 --fail -o "$tmp_file" "$dl_url" 2>/dev/null; then
+    if curl -sL --max-time 180 --retry 3 --retry-delay 5 --fail -o "$tmp_file" "$dl_url" ; then
         download_ok=true
     elif command -v wget &>/dev/null; then
         write_info "curl failed, trying wget..."
         rm -f "$tmp_file"
-        if wget -q --timeout=180 --tries=3 -O "$tmp_file" "$dl_url" 2>/dev/null; then
+        if wget -q --timeout=180 --tries=3 -O "$tmp_file" "$dl_url" ; then
             download_ok=true
         fi
     fi
@@ -250,7 +250,7 @@ download_binary() {
 
     local tmp_extract
     tmp_extract=$(mktemp -d "/tmp/paqet-extract-XXXXXXXX")
-    tar -xzf "$tmp_file" -C "$tmp_extract" 2>/dev/null
+    tar -xzf "$tmp_file" -C "$tmp_extract" 
     if [ $? -ne 0 ]; then
         write_err "Failed to extract archive."
         rm -f "$tmp_file"
@@ -887,7 +887,7 @@ downgrade_core() {
     local sel_response
     sel_response=$(curl -sL --retry 3 -A "paqx-manager" "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/$sel_tag")
     local dl_url
-    dl_url=$(echo "$sel_response" | grep "browser_download_url" | grep "linux" | grep "$bin_arch" | cut -d '"' -f 4 | head -n 1)
+    dl_url=$(echo "$sel_response" | grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' | grep "linux" | grep "$bin_arch" | head -1 | cut -d '"' -f 4)
     [ -z "$dl_url" ] && dl_url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$sel_tag/paqet-linux-$bin_arch-$clean_ver.tar.gz"
 
     write_info "Stopping service..."

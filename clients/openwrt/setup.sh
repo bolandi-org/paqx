@@ -139,7 +139,9 @@ download_binary() {
     write_info "Latest version: $tag"
 
     local clean_ver="${tag#v}"
-    local url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$tag/paqet-linux-$bin_arch-$clean_ver.tar.gz"
+    local url=""
+    url=$(echo "$response" | grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' | grep "linux" | grep "$bin_arch" | head -1 | cut -d '"' -f 4)
+    [ -z "$url" ] && url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$tag/paqet-linux-$bin_arch-$clean_ver.tar.gz"
 
     write_info "Downloading..."
     curl -L --retry 3 -o /tmp/paqet.tar.gz "$url"
@@ -705,7 +707,9 @@ downgrade_core() {
 
     local bin_arch=$(detect_arch)
     local clean_ver="${sel_tag#v}"
-    local url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$sel_tag/paqet-linux-$bin_arch-$clean_ver.tar.gz"
+    local url=""
+    url=$(echo "$response" | grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' | grep "linux" | grep "$bin_arch" | head -1 | cut -d '"' -f 4)
+    [ -z "$url" ] && url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$sel_tag/paqet-linux-$bin_arch-$clean_ver.tar.gz"
 
     write_info "Stopping service..."
     "$SERVICE_FILE" stop 2>/dev/null

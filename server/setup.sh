@@ -50,7 +50,7 @@ download_binary_core() {
     local tag=$(echo "$release_json" | grep -oP '"tag_name": "\K(.*)(?=")')
     local dl_url=""
     if [ -n "$tag" ]; then
-        dl_url=$(echo "$release_json" | grep "browser_download_url" | grep "$os_type" | grep "$arch" | cut -d '"' -f 4 | head -n 1)
+        dl_url=$(echo "$release_json" | grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' | grep "$os_type" | grep "$arch" | head -1 | cut -d '"' -f 4)
         if [ -z "$dl_url" ]; then
             local clean_ver="${tag#v}"
             dl_url="https://github.com/$b_owner/$b_name/releases/download/$tag/paqet-$os_type-$arch-$clean_ver.tar.gz"
